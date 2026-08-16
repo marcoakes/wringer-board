@@ -37,6 +37,31 @@ VACUITY_FILENAME = "vacuity.json"
 EVENTS_FILENAME = "loop.jsonl"
 SPEC_FILENAME = "wringer.spec.yaml"
 
+# **The other artifacts' versions, and the same rule ruling 6 states for the
+# acceptance record: a version this board does not know is not parsed.**
+#
+# Each of these was traced in the engine's source rather than guessed, and the
+# trace is written down here because the next reader will want it:
+#
+#   loop ending    `<loop bundle>/manifest.json` → `result.reason`
+#                  (`loop.py:300`, `SCHEMA_VERSION`/`SCHEMA_VERSIONS` at
+#                  `loop.py:73-79`). v1 froze `reason` as a closed six-value
+#                  enum; v2 made it an open string with eight known values, and
+#                  both put it in the same place, which is why both are read.
+#   vacuity        `<run bundle>/vacuity.json` → `verdict`
+#                  (`evidence.py:95`, `schema/vacuity.schema.json`).
+#   fleet outcomes `.wringer/fleets/<id>/manifest.json` → `tasks[].status`
+#                  (`fleet.py:36`, `fleet.py:391`,
+#                  `schema/fleet-manifest.schema.json`).
+#
+# **Health and the three signature axes are NOT under `.wringer/` at all**, and
+# that is a finding rather than an oversight — see `read_health` and
+# `read_audit` below.
+KNOWN_LOOP = ("wringer.loop.v1", "wringer.loop.v2")
+KNOWN_VACUITY = ("wringer.vacuity.v1",)
+KNOWN_FLEET = ("wringer.fleet.v1",)
+KNOWN_HEALTH = ("wringer.health.v1",)
+
 
 class UnknownVersion(Exception):
     """An artifact declares a schema version this board does not know.
@@ -83,6 +108,20 @@ class Criterion:
     witness: dict[str, Any] | None
 
 
+@dataclass(frozen=True)
+class Fact:
+    """One value the ENGINE wrote, and which of `refusals`' families it is in.
+
+    Deliberately just a pair. The board does not rank facts, does not decide
+    which of them matters, and does not carry a sentence here — the sentence is
+    `refusals.say(family, value)`'s and nowhere else, so there is exactly one
+    place a PM's wording can come from.
+    """
+
+    family: str
+    value: str
+
+
 @dataclass
 class Board:
     """Everything one render needs, read and never recomputed."""
@@ -100,6 +139,16 @@ class Board:
     scoped_out: list[str] = field(default_factory=list)
     vacuity: dict[str, Any] | None = None
     refusal: str | None = None
+    # What else this round recorded, in `refusals.FAMILIES` order. **Only facts
+    # that EXIST** — ruling 11, widened from vacuity and health to all seven:
+    # an artifact that is not there produces no entry, and the page then says
+    # nothing about that family rather than rendering absence as a verdict.
+    facts: list[Fact] = field(default_factory=list)
+    # Artifacts that were on disk and declared a version this board does not
+    # know. They produce NO fact — the board cannot know where a later version
+    # put the field, and a value read from the wrong place is worse than a
+    # silence. Named in the engineers' block so the silence is not total.
+    unreadable: list[str] = field(default_factory=list)
 
 
 def _load(path: Path) -> Any:
@@ -208,7 +257,201 @@ def read_spec(repo: Path) -> tuple[str | None, str | None]:
     return title, intent
 
 
-def read(repo: Path) -> Board:
+def latest_fleet(repo: Path) -> Path | None:
+    """The most recent fleet bundle. `.wringer/fleets/` — `fleet.py:36`."""
+    fleets = repo / ".wringer" / "fleets"
+    if not fleets.is_dir():
+        return None
+    candidates = [p for p in fleets.iterdir() if p.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def _known(payload: Any, known: tuple[str, ...]) -> tuple[dict[str, Any] | None, str | None]:
+    """`(payload, None)` if its version is known, `(None, version)` if it is not.
+
+    Three outcomes and they are three DIFFERENT facts, which is the whole
+    reason this returns a pair rather than an optional dict:
+
+    - `(None, None)` — nothing was there. Absence. The caller renders nothing.
+    - `(payload, None)` — readable, and this board knows the dialect.
+    - `(None, version)` — present, and written in a dialect this board does not
+      know. **Not parsed**: ruling 6's rule is that a version off the list gets
+      no best-effort parsing, and reading a field out of a later schema by name
+      is exactly that.
+    """
+    if not isinstance(payload, dict):
+        return None, None
+    version = payload.get("schema_version")
+    if version in known:
+        return payload, None
+    return None, str(version)
+
+
+def read_health(path: Path | None) -> tuple[list[str], str | None]:
+    """The health verdicts in a report the ENGINE wrote, in first-seen order.
+
+    **Health writes no file under `.wringer/` and this board does not invent
+    one.** `schema/health-report.schema.json` says so in its own description —
+    it is a derived view, and `cli.py:1965-1975` prints it, writing a file only
+    where `--output` names one. So the board reads a report the operator asked
+    the engine to write:
+
+        wring health --json --output health.json
+
+    and is given the path. **Ruling 11 offered two mechanisms** — that, or
+    running `wring health --json` through the CLI-as-API. The CLI-as-API branch
+    is NOT built here: this package has no runtime dependency on the engine,
+    and a renderer that shells out mid-render makes the page a function of the
+    machine rather than of the bytes on disk. Where no report is given, the
+    board says nothing about health, which is ruling 11's own other branch.
+
+    `gates[]` and `retired[]` are read as one list because both carry a
+    `verdict` and `retired` is one of the four values (`health.py:790-793`).
+    """
+    if path is None or not path.is_file():
+        return [], None
+    payload, unknown = _known(_load(path), KNOWN_HEALTH)
+    if payload is None:
+        return [], unknown
+    seen: list[str] = []
+    for row in list(payload.get("gates") or []) + list(payload.get("retired") or []):
+        verdict = (row or {}).get("verdict")
+        if isinstance(verdict, str) and verdict and verdict not in seen:
+            seen.append(verdict)
+    return seen, None
+
+
+def read_audit(path: Path | None) -> dict[str, str]:
+    """`wring audit`'s three axes, from a report the engine wrote.
+
+    **The three signature axes are in no file under `.wringer/` either, and
+    that is worth stating plainly because it is easy to assume otherwise.** An
+    `attestation.json` exists (`.wringer/attestations/<id>/attestation.json`,
+    `attest.py:46-47`) and it does NOT carry them: its own `signature` field is
+    `null` in v0 by ruling, and `change.commit_signature.status` is git's `%G?`
+    letter, a different vocabulary entirely. The values in
+    `sign.SIGNATURE_STATES`, `sign.IDENTITY_STATES` and `sign.INTEGRITY_STATES`
+    are produced by `sign.assess` inside `attest.audit` and reach a consumer
+    only through `wring audit --json` (`cli.py:3624-3641`).
+
+    So the board renders them only from that report, saved by the operator —
+    which is what ruling 13 licenses and the limit it sets. **The board never
+    assesses a signature itself**: deciding that a missing `.sig` means
+    `signature_missing` would be this surface re-implementing `sign.assess`,
+    which ruling 1 forbids outright.
+
+    Ruling 13 also asks that such a verdict be **attributed to `wring audit`**.
+    The round section carries no wording of its own by design, so the
+    attribution is rendered in the engineers' block instead — named here
+    because a docstring claiming an attribution the page does not make would be
+    the same defect in miniature.
+
+    The audit report carries no `schema_version` — it is a CLI JSON dump rather
+    than a bundle — so there is no version to gate on, and the three keys are
+    read by name or not at all.
+    """
+    if path is None or not path.is_file():
+        return {}
+    payload = _load(path)
+    if not isinstance(payload, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key in ("signature", "identity", "integrity"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            out[key] = value
+    return out
+
+
+def read_facts(
+    board: Board,
+    health_report: Path | None = None,
+    audit_report: Path | None = None,
+) -> None:
+    """The seven families that are not a criterion, read and never derived.
+
+    **Every value here is a string the engine literally wrote in a file.**
+    Nothing is recomputed, nothing is inferred from the absence of something
+    else, and no verdict is assembled out of parts — ruling 1, and the reason
+    this function is a sequence of reads with no branches that decide anything.
+
+    Order is `refusals.FAMILIES`' order rather than a judgement about which
+    fact matters most, for the same reason cards render in declared order: a
+    surface that sorted by severity would be deciding which debts matter.
+    """
+    from wringer_board import refusals
+
+    facts: list[Fact] = []
+
+    # 1. The loop ending. `<loop bundle>/manifest.json` → `result.reason`.
+    if board.loop_dir is not None:
+        payload, unknown = _known(
+            _load(board.loop_dir / MANIFEST_FILENAME), KNOWN_LOOP
+        )
+        if unknown is not None:
+            board.unreadable.append(f"loop bundle: {unknown}")
+        elif payload is not None:
+            reason = (payload.get("result") or {}).get("reason")
+            if isinstance(reason, str) and reason:
+                facts.append(Fact(refusals.LOOP_ENDING, reason))
+
+    # 2. The vacuity verdict. Ruling 11: written only under `run.prove`, so
+    # ABSENT is the ordinary case and it renders nothing rather than `fine`.
+    payload, unknown = _known(board.vacuity, KNOWN_VACUITY)
+    if unknown is not None:
+        board.unreadable.append(f"pre-change comparison: {unknown}")
+    elif payload is not None:
+        verdict = payload.get("verdict")
+        if isinstance(verdict, str) and verdict:
+            facts.append(Fact(refusals.VACUITY_VERDICT, verdict))
+
+    # 3. Health, from a report the operator had the engine write.
+    verdicts, unknown = read_health(health_report)
+    if unknown is not None:
+        board.unreadable.append(f"health report: {unknown}")
+    facts.extend(Fact(refusals.HEALTH_VERDICT, v) for v in verdicts)
+
+    # 4-6. The three signature axes, from `wring audit`'s own report. Absent
+    # report → NOTHING about any of them. "Nobody signed this" is a verdict
+    # `wring audit` reaches; the board may not reach it by not looking.
+    audited = read_audit(audit_report)
+    for key, family in (
+        ("signature", refusals.SIGNATURE),
+        ("identity", refusals.IDENTITY),
+        ("integrity", refusals.INTEGRITY),
+    ):
+        if key in audited:
+            facts.append(Fact(family, audited[key]))
+
+    # 7. Fleet task outcomes, deduplicated to the values present. The board
+    # names no task id and renders no count: B4, and a count would be a
+    # sentence this table does not hold.
+    fleet_dir = latest_fleet(board.repo)
+    if fleet_dir is not None:
+        payload, unknown = _known(
+            _load(fleet_dir / MANIFEST_FILENAME), KNOWN_FLEET
+        )
+        if unknown is not None:
+            board.unreadable.append(f"fleet bundle: {unknown}")
+        elif payload is not None:
+            seen: list[str] = []
+            for task in payload.get("tasks") or []:
+                status = (task or {}).get("status")
+                if isinstance(status, str) and status and status not in seen:
+                    seen.append(status)
+            facts.extend(Fact(refusals.FLEET_OUTCOME, s) for s in seen)
+
+    order = {family: index for index, family in enumerate(refusals.FAMILIES)}
+    board.facts = sorted(facts, key=lambda fact: order.get(fact.family, 99))
+
+
+def read(
+    repo: Path,
+    health_report: Path | None = None,
+    audit_report: Path | None = None,
+) -> Board:
     """Everything one render needs. Raises `UnknownVersion` rather than guess."""
     repo = repo.resolve()
     board = Board(repo=repo)
@@ -270,4 +513,10 @@ def read(repo: Path) -> Board:
     board.scoped_out = [
         gate for gate in (manifest.get("scoped_out") or []) if isinstance(gate, str)
     ]
+
+    # Read LAST, and only on the path that renders a page: the two refusals
+    # above return a board whose only content is the refusal, and a round
+    # summary beside "there is no evidence here yet" would be a page arguing
+    # with itself.
+    read_facts(board, health_report=health_report, audit_report=audit_report)
     return board

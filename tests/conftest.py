@@ -93,6 +93,129 @@ def write_loop(repo: Path, loop_id: str, run_ids: list[str]) -> Path:
     return loop
 
 
+# --- the artifacts the ROUND section reads -----------------------------------
+#
+# One writer per artifact, and each writes the shape traced in the engine's own
+# source rather than one invented here — the trace is in `read.py`'s constants
+# block. They are separate from `write_run`/`write_loop` on purpose: **absence
+# has to be reachable**, and a fixture that always wrote a loop manifest beside
+# a loop ledger would make the absence discipline untestable.
+
+
+def write_loop_manifest(
+    repo: Path, loop_id: str, reason: str, *, version: str = "wringer.loop.v2"
+) -> Path:
+    """`.wringer/loops/<id>/manifest.json` — `result.reason` is the ending."""
+    loop = repo / ".wringer" / "loops" / loop_id
+    loop.mkdir(parents=True, exist_ok=True)
+    path = loop / "manifest.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": version,
+            "loop_id": loop_id,
+            "started_at": "2026-08-16T09:00:00+01:00",
+            "repo": {"root": ".", "head_sha": None, "branch": "main",
+                     "dirty": False},
+            "config": {"max_iterations": 5, "worker": "sh ./worker.sh"},
+            "result": {"status": "stopped", "reason": reason, "iterations": 2,
+                       "final_run": None},
+        }, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_vacuity(
+    repo: Path, run_id: str, verdict: str, *, version: str = "wringer.vacuity.v1"
+) -> Path:
+    """`<run bundle>/vacuity.json` — written only under `run.prove`."""
+    path = repo / ".wringer" / "runs" / run_id / "vacuity.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "schema_version": version, "verdict": verdict,
+            "reason": "the pre-change comparison said so", "worktree_ms": 0,
+            "prove_ms": 0, "setup": None, "gates": [],
+        }),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_fleet(
+    repo: Path, fleet_id: str, statuses: list[str],
+    *, version: str = "wringer.fleet.v1",
+) -> Path:
+    """`.wringer/fleets/<id>/manifest.json` — `tasks[].status`."""
+    fleet = repo / ".wringer" / "fleets" / fleet_id
+    fleet.mkdir(parents=True, exist_ok=True)
+    path = fleet / "manifest.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": version, "fleet_id": fleet_id,
+            "started_at": "2026-08-16T09:00:00+01:00",
+            "config": {"concurrency": 2, "deadline": 600, "retries": 1,
+                       "join": "all"},
+            "result": {"succeeded": 0, "failed": 0, "parked": 0,
+                       "join_satisfied": False},
+            "tasks": [
+                {"id": f"task-{index}", "status": status, "reason": "",
+                 "attempts": 1, "loops": []}
+                for index, status in enumerate(statuses)
+            ],
+        }, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_health_report(
+    path: Path, verdicts: list[str], *, version: str = "wringer.health.v1"
+) -> Path:
+    """What `wring health --json --output PATH` leaves on disk.
+
+    `retired` is a verdict AND a top-level list (`health.py:790-793`), so a
+    retired row is written where the engine writes it rather than in `gates`.
+    """
+    def gate(index: int, verdict: str) -> dict:
+        return {"gate_id": f"gate-{index}", "command": "python3 check.py",
+                "verdict": verdict, "qualifying_runs": 3, "optional": False,
+                "last_failure": None, "last_sensitive": None, "drift": None,
+                "receipts": []}
+
+    rows = [gate(index, v) for index, v in enumerate(verdicts)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "schema_version": version,
+            "coverage": {"roots": ["."], "read": 1,
+                         "counts": {"run": 1, "loop": 0, "bench": 0},
+                         "skipped": [], "duplicates": [], "discovered": 1},
+            "gates": [row for row in rows if row["verdict"] != "retired"],
+            "retired": [row for row in rows if row["verdict"] == "retired"],
+            "limits": ["Health reads recorded history and nothing else."],
+        }),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_audit_report(path: Path, **axes: str) -> Path:
+    """What `wring audit --json` prints. **It carries no `schema_version`** —
+    it is a CLI report rather than a bundle, which is why `read_audit` has no
+    version to gate on and reads its three keys by name."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "ok": True, "attestation": "attestation.json", "checked": [],
+            "problem": None, "signature_reason": "", "limits": [],
+            "signature_limits": [], **axes,
+        }),
+        encoding="utf-8",
+    )
+    return path
+
+
 def criterion(
     cid: str,
     title: str,

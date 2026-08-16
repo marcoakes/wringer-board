@@ -1,0 +1,21 @@
+{
+  "schema_version": "wringer.loop.v1",
+  "loop_id": "20260816-090000-fake",
+  "started_at": "2026-08-11T19:31:09+01:00",
+  "repo": {
+    "root": ".",
+    "head_sha": "b6bcd41bb6255273860ed7e608091a7f7db8eafb",
+    "branch": "main",
+    "dirty": true
+  },
+  "config": {
+    "max_iterations": 5,
+    "worker": "sh ./oneshot.sh"
+  },
+  "result": {
+    "status": "stopped",
+    "reason": "the_worker_declined_to_comment",
+    "iterations": 2,
+    "final_run": null
+  }
+}

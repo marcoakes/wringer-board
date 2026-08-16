@@ -1,0 +1,28 @@
+{
+  "schema_version": "wringer.fleet.v1",
+  "fleet_id": "20260816-214704-7da1",
+  "started_at": "2026-08-16T22:47:04+01:00",
+  "config": {
+    "concurrency": 2,
+    "deadline": 600,
+    "retries": 1,
+    "join": "all"
+  },
+  "result": {
+    "succeeded": 1,
+    "failed": 0,
+    "parked": 0,
+    "join_satisfied": true
+  },
+  "tasks": [
+    {
+      "id": "csv",
+      "status": "succeeded",
+      "reason": "converged",
+      "attempts": 1,
+      "loops": [
+        "20260816-214704-d270"
+      ]
+    }
+  ]
+}

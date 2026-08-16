@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Get the numbers out of the report</title><style>
+:root{--ink:#16181d;--dim:#5c6370;--line:#e2e5ea;--bg:#fbfcfd;--card:#fff;
+--done:#1a7f4b;--doneb:#e6f4ec;--red:#b3261e;--redb:#fdeceb;
+--amber:#8a5a00;--amberb:#fdf3e2;--grey:#565d68;--greyb:#f1f3f5;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
+.intent{color:var(--dim);margin:0 0 28px;max-width:60ch}
+.promise{border:1px solid var(--line);border-left:4px solid var(--done);
+background:var(--doneb);padding:14px 18px;border-radius:6px;margin:0 0 10px;font-weight:600}
+.promise.withheld{border-left-color:var(--grey);background:var(--greyb);font-weight:400;color:var(--dim)}
+.counts{color:var(--dim);font-size:14px;margin:0 0 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+padding:18px 20px;margin:0 0 14px}
+.card h2{font-size:17px;margin:0 0 8px;font-weight:600;letter-spacing:-.01em}
+.state{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;padding:3px 8px;border-radius:4px;margin:0 8px 0 0;vertical-align:2px}
+.done .state{background:var(--doneb);color:var(--done)}
+.notyet .state{background:var(--amberb);color:var(--amber)}
+.notreached .state,.unknown .state,.untranslated .state{background:var(--greyb);color:var(--grey)}
+.needsyou .state{background:var(--amberb);color:var(--amber)}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;padding:3px 8px;border-radius:4px;background:var(--redb);color:var(--red)}
+.said{margin:12px 0 0;padding:10px 14px;background:#f7f8fa;border:1px solid var(--line);
+border-radius:5px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre-wrap;overflow-x:auto}
+.said .who{display:block;font-family:inherit;font-size:11px;color:var(--dim);
+margin:0 0 6px;text-transform:uppercase;letter-spacing:.05em}
+.wasred{margin:12px 0 0;padding:12px 14px;border:1px solid var(--line);
+border-left:4px solid var(--red);background:var(--redb);border-radius:5px;font-size:14px}
+.wasred b{color:var(--red)}
+p{margin:0 0 6px}
+details{margin-top:36px;border-top:1px solid var(--line);padding-top:18px;font-size:14px;color:var(--dim)}
+summary{cursor:pointer;color:var(--ink)}
+details li{margin-bottom:8px}
+.refusal{border:1px solid var(--red);border-left:4px solid var(--red);background:var(--redb);
+padding:18px 20px;border-radius:6px}
+.round{margin:0 0 28px;padding:2px 0 0;border-top:1px solid var(--line)}
+.round h2{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+color:var(--dim);margin:18px 0 12px}
+.round p{margin:0 0 10px;padding:0 0 0 14px;border-left:2px solid var(--line)}
+.round .untranslated{padding:0 0 0 14px;border-left:2px solid var(--grey);margin:0 0 10px}
+.round .said{margin-top:6px}
+</style></head><body><div class="wrap"><h1>Get the numbers out of the report</h1><p class="intent">I want the report available as a CSV: the same columns in the same order,
+every row that is in the table, and the amounts still reading as money.</p><div class="promise">Every requirement marked done on this page was demonstrated able to FAIL before it was made to pass.</div><p class="counts">3 requirements · 3 done and proved · 0 holding up the handover</p><section class="round"><h2>What happened in this round</h2>
+<p>This piece of work finished and its checks passed.</p>
+</section><div class="card done">
+<h2><span class="state">DONE — AND PROVED</span>The CSV header is the table's columns, in order</h2>
+<p>This check has been recorded failing — the run that failed it is in this repository's evidence.</p>
+<div class="wasred"><b>It was red first.</b> This check has been recorded failing — the run that failed it is in this repository's evidence.</div>
+<div class="said"><span class="who">What the check itself printed</span>reports.to_csv() does not exist</div>
+</div><div class="card done">
+<h2><span class="state">DONE — AND PROVED</span>Every row of the table reaches the CSV</h2>
+<p>This check failed on the code as it was BEFORE this change, and passes on it now.</p>
+<div class="wasred"><b>It was red first.</b> This check failed on the code as it was BEFORE this change, and passes on it now.</div>
+<div class="said"><span class="who">What the check itself printed</span>reports.to_csv() does not exist</div>
+</div><div class="card done">
+<h2><span class="state">DONE — AND PROVED</span>Amounts keep two decimal places</h2>
+<p>This check failed on the code as it was BEFORE this change, and passes on it now.</p>
+<div class="wasred"><b>It was red first.</b> This check failed on the code as it was BEFORE this change, and passes on it now.</div>
+<div class="said"><span class="who">What the check itself printed</span>reports.to_csv() does not exist</div>
+</div><details><summary>What this page does not claim — Wringer's own words, unedited</summary><ul><li>Evidenced means the bound gate passed and has demonstrably failed before. It does not mean the criterion is what the user needed, that the gate covers the criterion's whole meaning, or that coverage cannot narrow later — `wring health` watches that across time.</li><li>The gate-to-criterion binding is a human's declaration. Wringer checks the binding's consequences, never its wisdom.</li><li>Human criteria are answered by people. Nothing here scored them.</li><li>A sensitivity receipt says the gate's result differed between the two trees, not that the difference was the change. A gate whose own command arrived with the change reads sensitive for that reason alone — the citation beside it is how you tell.</li></ul></details><details><summary>For engineers</summary><ul><li>acceptance record: <code>wringer.acceptance.v1</code></li><li>verifications in this loop: 0 (order unknown — rendered as a set)</li></ul></details></div></body></html>

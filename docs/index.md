@@ -6,9 +6,11 @@ title: wringer-board
 
 **One page that tells you what is actually done — and shows you the proof.**
 
-Two real pages sit beside this one, both produced by `wringer-board render`
-against bundles a real [Wringer](https://github.com/marcoakes/wringer) run
-wrote. Neither is a mock-up.
+Real pages sit beside this one, produced by `wringer-board render` against
+bundles a real [Wringer](https://github.com/marcoakes/wringer) run wrote. None
+is a mock-up. These two lead because they are the two that sell; **seven more,
+[one per kind of refusal the engine can raise](captures/), landed with slice
+S2** and every value on them but one came from a real run.
 
 - **[A requirement that is done, and proved](captures/board-corpus-2026-08-16.html)**
   — from the corpus re-test of 2026-08-16. One card, DONE — AND PROVED, and the

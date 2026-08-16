@@ -1,0 +1,42 @@
+{
+  "schema_version": "wringer.vacuity.v1",
+  "verdict": "proven",
+  "reason": "bind-hdr, bind-rows, bind-cents failed on the pre-change tree, so the gates test this change",
+  "worktree_ms": 23,
+  "prove_ms": 49,
+  "setup": null,
+  "gates": [
+    {
+      "gate_id": "test",
+      "changed": "passed",
+      "pre_change": "passed",
+      "sensitive": false,
+      "cites": null,
+      "pre_change_log": "vacuity/001_test.stdout.log"
+    },
+    {
+      "gate_id": "bind-hdr",
+      "changed": "passed",
+      "pre_change": "failed",
+      "sensitive": true,
+      "cites": "reports.to_csv() does not exist",
+      "pre_change_log": "vacuity/002_bind-hdr.stdout.log"
+    },
+    {
+      "gate_id": "bind-rows",
+      "changed": "passed",
+      "pre_change": "failed",
+      "sensitive": true,
+      "cites": "reports.to_csv() does not exist",
+      "pre_change_log": "vacuity/003_bind-rows.stdout.log"
+    },
+    {
+      "gate_id": "bind-cents",
+      "changed": "passed",
+      "pre_change": "failed",
+      "sensitive": true,
+      "cites": "reports.to_csv() does not exist",
+      "pre_change_log": "vacuity/004_bind-cents.stdout.log"
+    }
+  ]
+}

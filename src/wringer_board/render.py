@@ -22,6 +22,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
+from wringer_board import refusals
 from wringer_board.cards import (
     DONE, NEEDS_YOU, NOT_REACHED, NOT_YET, UNKNOWN, UNTRANSLATED,
     Card, card_for, promise_earned,
@@ -72,11 +73,67 @@ summary{cursor:pointer;color:var(--ink)}
 details li{margin-bottom:8px}
 .refusal{border:1px solid var(--red);border-left:4px solid var(--red);background:var(--redb);
 padding:18px 20px;border-radius:6px}
+.round{margin:0 0 28px;padding:2px 0 0;border-top:1px solid var(--line)}
+.round h2{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+color:var(--dim);margin:18px 0 12px}
+.round p{margin:0 0 10px;padding:0 0 0 14px;border-left:2px solid var(--line)}
+.round .untranslated{padding:0 0 0 14px;border-left:2px solid var(--grey);margin:0 0 10px}
+.round .said{margin-top:6px}
 """.replace("themax", "760px")
 
 
 def _esc(text: str | None) -> str:
     return html.escape(text or "", quote=False)
+
+
+def _engine_words(text: str) -> str:
+    """**Ruling 17's one mechanism**, used by a card and by a round fact alike.
+
+    The engine's own words, verbatim, inside a visible state — never
+    swallowed, never prettified. It lives in one function because a second
+    copy of it is how one of the two paths quietly stops being verbatim.
+    """
+    return (
+        '<div class="said"><span class="who">Wringer said, and this board '
+        "has no plain-English wording for it yet</span>"
+        f"{_esc(text)}</div>"
+    )
+
+
+def _round_html(board: Board) -> str:
+    """What else this round recorded, one plain-language line per fact.
+
+    **Not a criterion card, and it must not look like one** — no card box, no
+    per-fact heading, no state chip except the UNTRANSLATED one, which is a
+    refusal to translate rather than a verdict about a requirement. A reader
+    must never mistake "the work stopped because it ran out of attempts" for a
+    requirement that failed.
+
+    **Only facts that EXIST** (ruling 11, widened from vacuity and health to
+    all seven). An absent artifact contributes nothing, so an unsigned page and
+    a page nobody audited are the same page — because they are the same fact:
+    *nobody looked.* Rendering absence as a verdict is the defect class this
+    project exists to catch, and it is one line of code away in every one of
+    these families.
+
+    Every sentence comes from `refusals.say` and nowhere else. There is no
+    wording in this function, which is what keeps the two greps in
+    `test_refusals.py` exhaustive over what a PM can read here.
+    """
+    if not board.facts:
+        return ""
+    parts = ['<section class="round"><h2>What happened in this round</h2>']
+    for fact in board.facts:
+        saying = refusals.say(fact.family, fact.value)
+        if saying is None:
+            parts.append(
+                f'<div class="untranslated"><span class="state">'
+                f"{_esc(UNTRANSLATED)}</span>{_engine_words(fact.value)}</div>"
+            )
+        else:
+            parts.append(f"<p>{_esc(saying.sentence)}</p>")
+    parts.append("</section>")
+    return "\n".join(parts)
 
 
 def _card_html(card: Card) -> str:
@@ -94,11 +151,7 @@ def _card_html(card: Card) -> str:
         parts.append(f"<p>{_esc(card.sentence)}</p>")
     if card.engine_words:
         # Ruling 17: the engine's words verbatim, inside a visible state.
-        parts.append(
-            '<div class="said"><span class="who">Wringer said, and this board '
-            "has no plain-English wording for it yet</span>"
-            f"{_esc(card.engine_words)}</div>"
-        )
+        parts.append(_engine_words(card.engine_words))
     if card.state == DONE:
         # **The hero.** Not the green — the green is ordinary. What sells is
         # that the same check is on the record having failed.
@@ -150,6 +203,13 @@ def render(board: Board) -> str:
         f'{refused} holding up the handover</p>'
     )
 
+    # **Between the counts and the cards, and that placement is the point.**
+    # These are facts about the ROUND — how the work stopped, whether the
+    # checks noticed the change, what an audit found — and reading them after
+    # the cards would make them look like a footnote to the requirements
+    # rather than the context the requirements were judged in.
+    body.append(_round_html(board))
+
     # **Declared order, never sorted by state** — which would be the surface
     # deciding which debts matter.
     body.extend(_card_html(card) for card in cards)
@@ -172,6 +232,33 @@ def render(board: Board) -> str:
         technical.append(
             f"vacuity verdict: <code>{_esc(str(board.vacuity.get('verdict')))}</code>"
         )
+    # **Attribution, and the one place it can live.** Ruling 13 says a verdict
+    # this surface did not compute may be rendered "attributed to `wring
+    # audit`" — and the round section above may carry no wording of its own, so
+    # the attribution is here, in the block B4 reserves for exactly this. Two
+    # commands, two lines, and only when their facts are actually on the page.
+    families = {fact.family for fact in board.facts}
+    if families & {refusals.SIGNATURE, refusals.IDENTITY, refusals.INTEGRITY}:
+        technical.append(
+            "signature, identity and integrity: as <code>wring audit</code> "
+            "reported them. This page did not check them itself"
+        )
+    if refusals.HEALTH_VERDICT in families:
+        technical.append(
+            "check health: as <code>wring health</code> reported it"
+        )
+    # **An artifact the board would not parse is named HERE and nowhere else.**
+    # It is present, it declares a version off the known list, and the board
+    # does not know where that version put the field — so the round section
+    # above stays silent rather than guessing, and the silence is accounted for
+    # in the one block B4 puts technical strings in. Naming it on a PM's line
+    # would be a version number in the chrome; leaving it nowhere would make an
+    # unreadable artifact indistinguishable from an absent one, which is the
+    # distinction this slice is about.
+    technical.extend(
+        f"not read, version unknown to this board: <code>{_esc(entry)}</code>"
+        for entry in board.unreadable
+    )
     body.append(
         "<details><summary>For engineers</summary><ul>"
         + "".join(f"<li>{line}</li>" for line in technical)

@@ -46,13 +46,37 @@ repository and renders it; it never re-decides anything.
 | **DONE — AND PROVED** | The check for this passes — and the same check is on the record having failed. |
 | **NOT YET** | Not done — and the check that decides it is written and failing right now. |
 | **NOT REACHED** | Not checked in this run, so nothing here says anything about it. |
-| **NEEDS YOU** | A person has to decide this one, and the page says which of the four reasons applies. |
+| **NEEDS YOU** | A person has to decide this one, and the page says which of the five reasons applies. |
 | **UNKNOWN** | This record says something the board does not understand, so it is showing nothing rather than something it cannot stand behind. |
 | **UNTRANSLATED** | Wringer said something the board has no plain-English wording for yet, so you get Wringer's own words, verbatim. |
 
 **REFUSED** is a badge rather than a state, and it can appear on several of the
 above. That is deliberate: it is the *handover* that was refused, not the
 requirement.
+
+## What happened in this round
+
+Above the cards, the page says in the same plain language what else the run
+recorded: how the work stopped, whether the checks noticed the change at all,
+whether the checks still look capable of failing, what an audit found, and how
+a supervised queue of work ended.
+
+**Only what was actually measured appears there.** No signature check, and the
+page says nothing about signatures — it does not say "unsigned". No fleet, and
+nothing about fleets. A thing nobody measured and a thing that came back bad
+are different facts, and this page will not render one as the other.
+
+Two of those come from commands rather than from files, because Wringer does
+not write them into your repository — so you hand the board its own reports:
+
+```bash
+wring health --json --output health.json
+wring audit --json .wringer/attestations/<id>/attestation.json > audit.json
+wringer-board render . --health-report health.json --audit-report audit.json
+```
+
+Without them the page simply says nothing about those things, which is the
+point.
 
 ## What this page will not do
 

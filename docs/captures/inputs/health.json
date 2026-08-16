@@ -1,0 +1,161 @@
+{
+ "schema_version": "wringer.health.v1",
+ "coverage": {
+  "roots": [
+   ".wringer/loops",
+   ".wringer/runs",
+   ".wringer/worktrees"
+  ],
+  "read": 5,
+  "counts": {
+   "run": 4,
+   "loop": 1,
+   "bench": 0
+  },
+  "skipped": [],
+  "duplicates": [],
+  "discovered": 5
+ },
+ "gates": [
+  {
+   "gate_id": "bind-cents",
+   "command": "python3 g_cents.py",
+   "verdict": "alive",
+   "qualifying_runs": 1,
+   "optional": false,
+   "last_failure": null,
+   "last_sensitive": ".wringer/runs/20260811-183109-5a78",
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183109-5a78"
+   ]
+  },
+  {
+   "gate_id": "bind-hdr",
+   "command": "python3 g_hdr.py",
+   "verdict": "alive",
+   "qualifying_runs": 3,
+   "optional": false,
+   "last_failure": ".wringer/runs/20260811-183109-8a36",
+   "last_sensitive": ".wringer/runs/20260811-183109-5a78",
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183103-a171",
+    ".wringer/runs/20260811-183109-5a78",
+    ".wringer/runs/20260811-183109-8a36"
+   ]
+  },
+  {
+   "gate_id": "bind-rows",
+   "command": "python3 g_rows.py",
+   "verdict": "alive",
+   "qualifying_runs": 1,
+   "optional": false,
+   "last_failure": null,
+   "last_sensitive": ".wringer/runs/20260811-183109-5a78",
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183109-5a78"
+   ]
+  },
+  {
+   "gate_id": "test",
+   "command": "python3 test_reports.py",
+   "verdict": "untested",
+   "qualifying_runs": 4,
+   "optional": false,
+   "last_failure": null,
+   "last_sensitive": null,
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183047-0059",
+    ".wringer/runs/20260811-183103-a171",
+    ".wringer/runs/20260811-183109-5a78",
+    ".wringer/runs/20260811-183109-8a36"
+   ]
+  }
+ ],
+ "retired": [
+  {
+   "gate_id": "bind-cents",
+   "command": "python3 test_reports.py",
+   "verdict": "retired",
+   "qualifying_runs": 1,
+   "optional": false,
+   "last_failure": null,
+   "last_sensitive": null,
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183047-0059"
+   ]
+  },
+  {
+   "gate_id": "bind-hdr",
+   "command": "python3 test_reports.py",
+   "verdict": "retired",
+   "qualifying_runs": 1,
+   "optional": false,
+   "last_failure": null,
+   "last_sensitive": null,
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183047-0059"
+   ]
+  },
+  {
+   "gate_id": "bind-rows",
+   "command": "python3 test_reports.py",
+   "verdict": "retired",
+   "qualifying_runs": 1,
+   "optional": false,
+   "last_failure": null,
+   "last_sensitive": null,
+   "drift": {
+    "duration_trend": null,
+    "slow": false,
+    "timeouts": 0,
+    "truncations": 0
+   },
+   "receipts": [
+    ".wringer/runs/20260811-183047-0059"
+   ]
+  }
+ ],
+ "limits": [
+  "Health reads recorded evidence. A gate can be well designed and still read zombie here \u2014 the claim is about the record, not the gate.",
+  "Only declared gates are visible. Checks outside .wringer.yaml \u2014 scripts, CI steps, hand-kept lists \u2014 are beyond this instrument, and they narrow too.",
+  "Thin history cannot support zombie. It can support alive: one recorded failure is a demonstration, and no number of runs is needed to believe a demonstration.",
+  "A sensitive row proves the gate's result changed with the tree, not that the change was honest. An agent deleting an already-failing assertion records one for the wrong reason (SPEC_VACUITY_V0 \u00a75a), and health inherits that blind spot whole.",
+  "Observed stability is a frequency in the record, never a probability about the gate. Only gates that declared `stability:` are measured at all, so silence here means nobody looked rather than that a gate is deterministic \u2014 and a flaky run is excluded from the failures that make a gate read alive, because it did not follow from the tree."
+ ]
+}
