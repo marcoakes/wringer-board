@@ -1,0 +1,216 @@
+"""One screen, one file. SPEC_BOARD_V0 §3 and §7.
+
+Static-first and self-contained: inline CSS, no network, no fonts to fetch, no
+server. B1 — the layer is local and single-user — and the probe's single HTML
+file is the existence proof this is enough.
+
+**B4, the copy ceiling.** No YAML, no exit codes, no paths, no gate ids, no run
+ids in the board's own chrome. Two deliberate exceptions, both on the card and
+both because removing them costs the PM information they need: the message the
+check printed, verbatim in a block attributed to the check, and the attempt
+ordinal with its timestamp. Everything else technical lives in one page-level
+collapsed block addressed to engineers.
+
+**The Q1 ceiling, which no string here may exceed:** a witness proves the
+stated criterion could fail and was made to pass; it does not certify agreement
+with an unstated intended fix. Nothing on this page may say the check catches
+wrong fixes.
+"""
+
+from __future__ import annotations
+
+import html
+from pathlib import Path
+
+from wringer_board.cards import (
+    DONE, NEEDS_YOU, NOT_REACHED, NOT_YET, UNKNOWN, UNTRANSLATED,
+    Card, card_for, promise_earned,
+)
+from wringer_board.read import Board, UnknownVersion
+
+_STATE_CLASS = {
+    DONE: "done", NOT_YET: "notyet", NOT_REACHED: "notreached",
+    NEEDS_YOU: "needsyou", UNKNOWN: "unknown", UNTRANSLATED: "untranslated",
+}
+
+CSS = """
+:root{--ink:#16181d;--dim:#5c6370;--line:#e2e5ea;--bg:#fbfcfd;--card:#fff;
+--done:#1a7f4b;--doneb:#e6f4ec;--red:#b3261e;--redb:#fdeceb;
+--amber:#8a5a00;--amberb:#fdf3e2;--grey:#565d68;--greyb:#f1f3f5;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:themax;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
+.intent{color:var(--dim);margin:0 0 28px;max-width:60ch}
+.promise{border:1px solid var(--line);border-left:4px solid var(--done);
+background:var(--doneb);padding:14px 18px;border-radius:6px;margin:0 0 10px;font-weight:600}
+.promise.withheld{border-left-color:var(--grey);background:var(--greyb);font-weight:400;color:var(--dim)}
+.counts{color:var(--dim);font-size:14px;margin:0 0 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+padding:18px 20px;margin:0 0 14px}
+.card h2{font-size:17px;margin:0 0 8px;font-weight:600;letter-spacing:-.01em}
+.state{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;padding:3px 8px;border-radius:4px;margin:0 8px 0 0;vertical-align:2px}
+.done .state{background:var(--doneb);color:var(--done)}
+.notyet .state{background:var(--amberb);color:var(--amber)}
+.notreached .state,.unknown .state,.untranslated .state{background:var(--greyb);color:var(--grey)}
+.needsyou .state{background:var(--amberb);color:var(--amber)}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;padding:3px 8px;border-radius:4px;background:var(--redb);color:var(--red)}
+.said{margin:12px 0 0;padding:10px 14px;background:#f7f8fa;border:1px solid var(--line);
+border-radius:5px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre-wrap;overflow-x:auto}
+.said .who{display:block;font-family:inherit;font-size:11px;color:var(--dim);
+margin:0 0 6px;text-transform:uppercase;letter-spacing:.05em}
+.wasred{margin:12px 0 0;padding:12px 14px;border:1px solid var(--line);
+border-left:4px solid var(--red);background:var(--redb);border-radius:5px;font-size:14px}
+.wasred b{color:var(--red)}
+p{margin:0 0 6px}
+details{margin-top:36px;border-top:1px solid var(--line);padding-top:18px;font-size:14px;color:var(--dim)}
+summary{cursor:pointer;color:var(--ink)}
+details li{margin-bottom:8px}
+.refusal{border:1px solid var(--red);border-left:4px solid var(--red);background:var(--redb);
+padding:18px 20px;border-radius:6px}
+""".replace("themax", "760px")
+
+
+def _esc(text: str | None) -> str:
+    return html.escape(text or "", quote=False)
+
+
+def _card_html(card: Card) -> str:
+    klass = _STATE_CLASS.get(card.state, "unknown")
+    parts = [f'<div class="card {klass}">']
+    parts.append(
+        f'<h2><span class="state">{_esc(card.state)}</span>{_esc(card.title or card.id)}</h2>'
+    )
+    if card.refused:
+        parts.append(
+            '<p><span class="badge">Refused</span> '
+            "This one is holding up the handover.</p>"
+        )
+    if card.sentence:
+        parts.append(f"<p>{_esc(card.sentence)}</p>")
+    if card.engine_words:
+        # Ruling 17: the engine's words verbatim, inside a visible state.
+        parts.append(
+            '<div class="said"><span class="who">Wringer said, and this board '
+            "has no plain-English wording for it yet</span>"
+            f"{_esc(card.engine_words)}</div>"
+        )
+    if card.state == DONE:
+        # **The hero.** Not the green — the green is ordinary. What sells is
+        # that the same check is on the record having failed.
+        parts.append(
+            '<div class="wasred"><b>It was red first.</b> '
+            f"{_esc(card.receipt or '')}</div>"
+        )
+    if card.check_said:
+        parts.append(
+            '<div class="said"><span class="who">What the check itself '
+            f"printed</span>{_esc(card.check_said)}</div>"
+        )
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
+def render(board: Board) -> str:
+    """The whole page, as one self-contained string."""
+    cards = [card_for(board, criterion) for criterion in board.criteria]
+    title = board.spec_title or "Requirements"
+
+    body: list[str] = [f"<h1>{_esc(title)}</h1>"]
+    if board.spec_intent:
+        body.append(f'<p class="intent">{_esc(board.spec_intent)}</p>')
+
+    if board.refusal:
+        body.append(f'<div class="refusal"><p>{_esc(board.refusal)}</p></div>')
+        return _page(title, body)
+
+    # **The promise, earned or withheld** — never softened into a maybe.
+    if promise_earned(board, cards):
+        body.append(
+            '<div class="promise">Every requirement marked done on this page '
+            "was demonstrated able to FAIL before it was made to pass.</div>"
+        )
+    else:
+        body.append(
+            '<div class="promise withheld">This page does not claim that every '
+            "requirement marked done was demonstrated able to fail first — "
+            "either nothing is done yet, or one of the proofs could not be "
+            "followed from the evidence in this repository.</div>"
+        )
+
+    done = sum(1 for c in cards if c.state == DONE)
+    refused = sum(1 for c in cards if c.refused)
+    body.append(
+        f'<p class="counts">{len(cards)} requirement'
+        f'{"" if len(cards) == 1 else "s"} · {done} done and proved · '
+        f'{refused} holding up the handover</p>'
+    )
+
+    # **Declared order, never sorted by state** — which would be the surface
+    # deciding which debts matter.
+    body.extend(_card_html(card) for card in cards)
+
+    # Ruling 9: the honest limits render VERBATIM, in the engine's own voice.
+    # Translating a limit weakens it unless the translation is guarded, and
+    # that guard is a cycle. §8's sixth non-goal refuses it.
+    if board.limits:
+        body.append("<details><summary>What this page does not claim — "
+                    "Wringer's own words, unedited</summary><ul>")
+        body.extend(f"<li>{_esc(limit)}</li>" for limit in board.limits)
+        body.append("</ul></details>")
+
+    technical = [
+        f"acceptance record: <code>{_esc(board.acceptance_version)}</code>",
+        f"verifications in this loop: {len(board.attempts)}"
+        + ("" if board.ordered else " (order unknown — rendered as a set)"),
+    ]
+    if board.vacuity:
+        technical.append(
+            f"vacuity verdict: <code>{_esc(str(board.vacuity.get('verdict')))}</code>"
+        )
+    body.append(
+        "<details><summary>For engineers</summary><ul>"
+        + "".join(f"<li>{line}</li>" for line in technical)
+        + "</ul></details>"
+    )
+    return _page(title, body)
+
+
+def _page(title: str, body: list[str]) -> str:
+    return (
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        f"<title>{_esc(title)}</title><style>{CSS}</style></head>"
+        f'<body><div class="wrap">{"".join(body)}</div></body></html>\n'
+    )
+
+
+def render_unknown_version(error: UnknownVersion) -> str:
+    """Ruling 6: a version this board does not know renders ZERO CARDS.
+
+    Not best-effort parsing, not partial rendering. A board that guessed past a
+    schema version would supply the flattering answer, which is the one thing
+    every `limits` block in the engine warns about.
+    """
+    body = [
+        "<h1>This board cannot read this evidence</h1>",
+        '<div class="refusal">',
+        f"<p>The record in this repository is written in "
+        f"<code>{_esc(error.version)}</code>, and this board understands "
+        f"<code>{_esc(', '.join(error.known))}</code>.</p>",
+        "<p>Rather than guess at what changed and show you something that "
+        "might be wrong, it is showing you nothing. Update the board, or read "
+        "the evidence with the version of Wringer that wrote it.</p>",
+        "</div>",
+    ]
+    return _page("Unreadable evidence", body)
+
+
+def write(board: Board, out: Path) -> Path:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render(board), encoding="utf-8")
+    return out
