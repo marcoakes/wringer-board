@@ -13,6 +13,30 @@ in a browser, no server and no network.
 best day is a brochure. The withheld promise, the untranslated cause and the
 absent hero box are what make the first page worth believing.
 
+## The `.png` files, and what they are NOT
+
+Each `.html` above has a `.png` beside it. **The HTML is the evidence; the PNG
+is a convenience** — it exists so a reader who cannot open a local file still
+sees the page, and so this repository can show the surface before it is
+published anywhere.
+
+Each PNG was produced by loading the committed `.html` from disk in headless
+Chrome at a 1200px viewport and screenshotting it. **Nothing was styled,
+cropped to flatter, re-rendered from different data, or assembled by hand**,
+and the only parameter chosen was a window height that fits the content
+without a band of empty page underneath it. Anyone can reproduce one:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless --disable-gpu --hide-scrollbars \
+  --window-size=1200,1330 --default-background-color=FFFFFFFF \
+  --screenshot=board-corpus-2026-08-16.png \
+  file://$PWD/board-corpus-2026-08-16.html
+```
+
+If a PNG and its HTML ever disagree, **the HTML is right** and the PNG is
+stale. That direction is the whole reason both are kept.
+
 ## What the winning page found in the board itself
 
 The corpus bundles carry `receipt.kind: "witness"` — a **third** receipt kind.

@@ -12,11 +12,26 @@ fail is not evidence, it is decoration. So every "done" on this page carries the
 record of the same check being red first, and if that record cannot be produced,
 the page says so instead of claiming it.
 
+![A board page: one card reading DONE — AND PROVED, above it the earned promise that every requirement marked done on this page was demonstrated able to FAIL before it was made to pass, and inside the card a red-bordered box reading "It was red first."](docs/captures/board-corpus-2026-08-16.png)
+
+*A real page, not a mock-up — rendered from bundles a real run wrote, and
+committed beside its own HTML in [`docs/captures/`](docs/captures/). The
+[second capture there](docs/captures/board-uncovered-2026-08-16.png) is the one
+worth more: the same board on a day the evidence was not there, with the
+promise withheld.*
+
+**Not published yet, and this line says so rather than telling you to install
+something that does not exist.** There is no PyPI release and this repository
+is not public, so today the only way to run it is from a clone:
+
 ```bash
-pip install wringer-board
+pip install -e .
 wringer-board render /path/to/your/repo -o board.html
 open board.html
 ```
+
+When it is published, the first line becomes `pip install wringer-board` and
+nothing else about the command changes.
 
 One HTML file. No server, no account, no network. It reads the evidence
 [Wringer](https://github.com/marcoakes/wringer) already wrote into your
