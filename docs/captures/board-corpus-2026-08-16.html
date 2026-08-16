@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>"attrs-order-check-after-transformer"</title><style>
+:root{--ink:#16181d;--dim:#5c6370;--line:#e2e5ea;--bg:#fbfcfd;--card:#fff;
+--done:#1a7f4b;--doneb:#e6f4ec;--red:#b3261e;--redb:#fdeceb;
+--amber:#8a5a00;--amberb:#fdf3e2;--grey:#565d68;--greyb:#f1f3f5;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
+.intent{color:var(--dim);margin:0 0 28px;max-width:60ch}
+.promise{border:1px solid var(--line);border-left:4px solid var(--done);
+background:var(--doneb);padding:14px 18px;border-radius:6px;margin:0 0 10px;font-weight:600}
+.promise.withheld{border-left-color:var(--grey);background:var(--greyb);font-weight:400;color:var(--dim)}
+.counts{color:var(--dim);font-size:14px;margin:0 0 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+padding:18px 20px;margin:0 0 14px}
+.card h2{font-size:17px;margin:0 0 8px;font-weight:600;letter-spacing:-.01em}
+.state{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;padding:3px 8px;border-radius:4px;margin:0 8px 0 0;vertical-align:2px}
+.done .state{background:var(--doneb);color:var(--done)}
+.notyet .state{background:var(--amberb);color:var(--amber)}
+.notreached .state,.unknown .state,.untranslated .state{background:var(--greyb);color:var(--grey)}
+.needsyou .state{background:var(--amberb);color:var(--amber)}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;padding:3px 8px;border-radius:4px;background:var(--redb);color:var(--red)}
+.said{margin:12px 0 0;padding:10px 14px;background:#f7f8fa;border:1px solid var(--line);
+border-radius:5px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre-wrap;overflow-x:auto}
+.said .who{display:block;font-family:inherit;font-size:11px;color:var(--dim);
+margin:0 0 6px;text-transform:uppercase;letter-spacing:.05em}
+.wasred{margin:12px 0 0;padding:12px 14px;border:1px solid var(--line);
+border-left:4px solid var(--red);background:var(--redb);border-radius:5px;font-size:14px}
+.wasred b{color:var(--red)}
+p{margin:0 0 6px}
+details{margin-top:36px;border-top:1px solid var(--line);padding-top:18px;font-size:14px;color:var(--dim)}
+summary{cursor:pointer;color:var(--ink)}
+details li{margin-bottom:8px}
+.refusal{border:1px solid var(--red);border-left:4px solid var(--red);background:var(--redb);
+padding:18px 20px;border-radius:6px}
+</style></head><body><div class="wrap"><h1>"attrs-order-check-after-transformer"</h1><p class="intent"># field checks done too early causing error
+
+(python-attrs/attrs issue #1147, verbatim body)
+
+Attrs does some checks on fields like no defaulted fields coming before non-defaulted fields before running custom field transformers. This is a problem when a field transformer intends to modify the fields but gets an error before being able to apply their modification.
+For example, this field transformer reorders fields so that in fact the defaulted field `x` comes after the non-defaulted field `y`. But attrs errors before the transformer is ever called.
+
+```python
+def order_by_metadata(cls, fields):
+fields.sort(key=lambda x: x.metadata["field_order"])
+return fields
+
+@define(field_transformer=order_by_metadata)
+class A:
+x: int = field(metadata={"field_order": 1}, default=0)
+y: int = field(metadata={"field_order": 0})
+```
+
+```
+Traceback (most recent call last):
+File "...", line 426, in &lt;module&gt;
+class A:
+File ".../attr/_next_gen.py", line 146, in wrap
+return do_it(cls, True)
+File ".../attr/_next_gen.py", line 90, in do_it
+return attrs(
+File ".../attr/_make.py", line 1603, in attrs
+return wrap(maybe_cls)
+File ".../attr/_make.py", line 1499, in wrap
+builder = _ClassBuilder(
+File ".../attr/_make.py", line 657, in __init__
+attrs, base_attrs, base_map = _transform_attrs(
+File ".../attr/_make.py", line 566, in _transform_attrs
+raise ValueError(
+ValueError: No mandatory attributes allowed after an attribute with a default value or factory.  Attribute in question: Attribute(name='y', default=NOTHING, validator=None, repr=True, eq=True, eq_key=None, order=True, order_key=None, hash=None, init=True, metadata=mappingproxy({'field_order': 0}), type='int', converter=None, kw_only=False, inherited=False, on_setattr=None, alias=None)
+```
+I think these checks should be done after custom field transformers.</p><div class="promise">Every requirement marked done on this page was demonstrated able to FAIL before it was made to pass.</div><p class="counts">1 requirement · 1 done and proved · 0 holding up the handover</p><div class="card done">
+<h2><span class="state">DONE — AND PROVED</span># field checks done too early causing error (python-attrs/attrs issue #1147, verbatim body) Attrs does some checks on fields like no defaulted fields coming before non-defaulted fields before running custom field transformers. This is a problem when a field transformer intends to modify the fields b</h2>
+<p>The repository had no check for this. Wringer wrote one before the work began, recorded it failing then, and the same check passes now.</p>
+<div class="wasred"><b>It was red first.</b> The repository had no check for this. Wringer wrote one before the work began, recorded it failing then, and the same check passes now.</div>
+</div><details><summary>What this page does not claim — Wringer's own words, unedited</summary><ul><li>Evidenced means the bound gate passed and has demonstrably failed before. It does not mean the criterion is what the user needed, that the gate covers the criterion's whole meaning, or that coverage cannot narrow later — `wring health` watches that across time.</li><li>The gate-to-criterion binding is a human's declaration. Wringer checks the binding's consequences, never its wisdom.</li><li>Human criteria are answered by people. Nothing here scored them.</li><li>A sensitivity receipt says the gate's result differed between the two trees, not that the difference was the change. A gate whose own command arrived with the change reads sensitive for that reason alone — the citation beside it is how you tell.</li><li>A witness proves the stated criterion could fail and was made to pass. It does not certify agreement with an unstated intended fix, and where the criterion under-describes the intent the witness inherits that gap. Nothing here catches a change that satisfies the criterion and is still wrong.</li><li>A witness evidences ONE criterion. A manufactured fail-to-pass check is necessary and demonstrably not sufficient — it raises the floor and does not make a delivery safe.</li><li>The pin is tamper-EVIDENT, not tamper-proof: a worker on the host can read and rewrite what it finds there. It becomes a boundary only under run.containment.</li></ul></details><details><summary>For engineers</summary><ul><li>acceptance record: <code>wringer.acceptance.v2</code></li><li>verifications in this loop: 1</li></ul></details></div></body></html>

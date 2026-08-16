@@ -118,3 +118,101 @@ def test_the_real_bundles_limits_render_verbatim(tmp_path):
     board = read_module.read(_repo(tmp_path))
     page = render_module.render(board)
     assert "does not certify agreement with an unstated intended fix" in page
+
+
+# --- the THIRD receipt kind, found on the corpus pass's own bundles ----------
+
+# A real `evidenced` row from the corpus re-test, 2026-08-16 — the shape a
+# WINNING row has. `receipt.kind` is `witness`, which SPEC_BOARD ruling 5
+# predates: the spec was written against `accept.py` at `d23d7ca`, which had
+# `failure` and `sensitive` only.
+REAL_WITNESS_RECEIPT = {
+    "schema_version": "wringer.acceptance.v2",
+    "criteria": [{
+        "criterion": "issue",
+        "title": "`order` check runs after the field transformer",
+        "required": True,
+        "state": "evidenced",
+        "gate": None,
+        "command": None,
+        "receipt": {"kind": "witness", "bundle": ".wringer/runs/20260816-102739-2755"},
+        "refuses": False,
+        "reason": "",
+        "witness": {
+            "pinned_sha256": "9c13fb8dd745",
+            "proved_red": "assertion",
+            "result": "passed",
+            "discarded": None,
+        },
+    }],
+    "limits": ["A witness proves the stated criterion could fail."],
+}
+
+
+def _repo_with(tmp_path: Path, payload: dict) -> Path:
+    run = tmp_path / ".wringer" / "runs" / "20260816-102739-2755"
+    run.mkdir(parents=True)
+    (run / "acceptance.json").write_text(json.dumps(payload), encoding="utf-8")
+    (run / "manifest.json").write_text(
+        json.dumps({"schema_version": "wringer.evidence.v1"}), encoding="utf-8"
+    )
+    return tmp_path
+
+
+def test_a_WITNESS_receipt_resolves_and_earns_the_promise(tmp_path):
+    """**The gap the corpus pass's own bundles found.**
+
+    Before this, the board met the strongest red-first demonstration the
+    programme has and rendered UNKNOWN — the receipt kind was one ruling 5 did
+    not enumerate, so the chain would not resolve, the card was demoted, and
+    the promise was withheld. Honest, and wrong: the record DOES show the check
+    failing, on a check that did not exist until Wringer wrote it.
+    """
+    board = read_module.read(_repo_with(tmp_path, REAL_WITNESS_RECEIPT))
+    card = cards.card_for(board, board.criteria[0])
+
+    assert card.state == cards.DONE, (
+        f"a winning row rendered {card.state} — the board cannot read the "
+        "receipt its own engine writes on the rows that matter most"
+    )
+    assert cards.promise_earned(board, [card])
+
+    page = render_module.render(board)
+    assert "It was red first." in page
+    assert "before the work began" in page
+
+
+def test_a_witness_receipt_whose_red_was_a_LOAD_FAILURE_resolves_nothing(tmp_path):
+    """W8's discrimination, carried onto the card.
+
+    A witness red because the runner could not LOAD it turns green the moment
+    any file of that name exists. It evidences nothing, so a receipt pointing
+    at it must not resolve — and the promise must not fire over it.
+    """
+    payload = json.loads(json.dumps(REAL_WITNESS_RECEIPT))
+    payload["criteria"][0]["witness"]["proved_red"] = "collection_error"
+
+    board = read_module.read(_repo_with(tmp_path, payload))
+    card = cards.card_for(board, board.criteria[0])
+
+    assert card.state == cards.UNKNOWN
+    assert not cards.promise_earned(board, [card])
+
+
+def test_the_three_receipt_kinds_say_THREE_different_things(tmp_path):
+    """Ruling 5's whole point: different facts get different words, and
+    rendering one as another is an overclaim. Asserted as a set so a future
+    kind cannot quietly reuse an existing sentence."""
+    said = set()
+    for kind, extra in (
+        ("failure", {}),
+        ("sensitive", {"cites": "it failed on the pre-change tree"}),
+        ("witness", {}),
+    ):
+        payload = json.loads(json.dumps(REAL_WITNESS_RECEIPT))
+        payload["criteria"][0]["receipt"] = {"kind": kind, **extra}
+        root = _repo_with(tmp_path / kind, payload)
+        board = read_module.read(root)
+        said.add(cards.card_for(board, board.criteria[0]).sentence)
+
+    assert len(said) == 3, f"two receipt kinds share a sentence: {said}"

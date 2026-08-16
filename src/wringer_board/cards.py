@@ -115,6 +115,32 @@ def _chain(board: Board, criterion: Criterion) -> tuple[bool, str | None, str | 
             "in this repository's evidence."
         ), said
 
+    if kind == "witness":
+        # **The THIRD receipt kind, and ruling 5 predates it.** The spec was
+        # written against `accept.py` at `d23d7ca`, which had `failure` and
+        # `sensitive`; `wringer.acceptance.v2` added `witness`, and the corpus
+        # re-test's winning rows carry exactly this. Without it the board
+        # demoted the strongest red-first demonstration this programme has to
+        # UNKNOWN and withheld the promise — honest, and wrong.
+        #
+        # Its own sentence, because ruling 5's whole point is that different
+        # facts get different words. A `failure` receipt says a repository's
+        # own check has been recorded failing. A `sensitive` receipt says a
+        # check failed on the code as it was. **This one says something neither
+        # can**: the check did not exist until Wringer wrote it, it was written
+        # BEFORE the work began, it was recorded failing then, and the same
+        # pinned bytes pass now.
+        witness = criterion.witness or {}
+        if witness.get("proved_red") != "assertion":
+            # Proved red for the wrong reason — a load failure — evidences
+            # nothing, and a receipt pointing at it resolves nothing.
+            return False, None, None
+        return True, (
+            "The repository had no check for this. Wringer wrote one before "
+            "the work began, recorded it failing then, and the same check "
+            "passes now."
+        ), None
+
     if kind == "sensitive":
         # On the CHANGED tree the gate passed, so the gate directory's
         # `result.json` says `passed` and reading it would resolve nothing. The
