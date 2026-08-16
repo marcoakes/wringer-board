@@ -247,7 +247,7 @@ def test_without_a_loop_the_runs_are_an_UNORDERED_SET(repo):
     assert board.attempts == []
 
 
-# --- ruling 15: `unevidenced` has FOUR causes --------------------------------
+# --- ruling 15: `unevidenced` has FIVE causes --------------------------------
 
 
 @pytest.mark.parametrize(
@@ -255,26 +255,45 @@ def test_without_a_loop_the_runs_are_an_UNORDERED_SET(repo):
     [
         ("the gate arrived with the change it judges", "arrived-with-the-work",
          "cannot vouch for the work that brought it"),
-        ("this gate has never been recorded failing", "never-recorded-failing",
+        ("this gate has never been recorded failing", "born-green",
          "never been recorded failing"),
         ("the pre-change tree could not establish it", "pre-existence-unestablished",
          "existed before the change"),
+        # **The fifth, named in S2.** Its fixture is the reason string
+        # `accept.py` actually writes for a discarded witness, and it must not
+        # be swallowed by the unbound branch it shares `gate: null` with.
+        ("no gate proves this criterion, and its witness evidences nothing "
+         "(the runner could not collect it (exit 2)) — a human decides",
+         "witness-evidenced-nothing",
+         "turned out to prove nothing"),
     ],
 )
-def test_the_four_causes_of_unevidenced_are_never_rendered_as_one_another(
+def test_the_five_causes_of_unevidenced_are_never_rendered_as_one_another(
     repo, reason, expected_cause, must_say
 ):
     """**Ruling 15, and it is pinned by fixture on purpose.**
 
-    Only `gate: null` is structural; the other three are told apart by matching
+    Only the unbound case is structural; the rest are told apart by matching
     the engine's own `reason` text. So each carries a pinned fixture, and a
     wording change in `accept.py` fails HERE rather than silently re-labelling
     a card.
 
-    Rendering the fourth as the second is false and backwards — the record does
-    show that gate can fail; the objection is that the gate is NEW. It is also
-    one of three things the README advertises as breaking the circularity
-    objection, so getting it wrong contradicts the README two clicks away.
+    Rendering one as another is false and, in one direction, backwards — for a
+    check that arrived with the work the record DOES show that gate can fail;
+    the objection is that the gate is NEW. It is also one of three things the
+    core README advertises as breaking the circularity objection, so getting it
+    wrong contradicts the README two clicks away.
+
+    **Amended in S2, and the amendment is the point of the slice.** This test
+    was `test_the_four_causes_...` and carried three rows. `SPEC_BOARD_V0`
+    ruling 15 enumerated four causes from `accept.py` at `d23d7ca`; the witness
+    lane added a fifth, `test_real_bundles.py` met it on REAL data, and naming
+    it was handed to S2 in that test's own docstring. The fourth row below is
+    that discharge.
+
+    One rename came with it: `never-recorded-failing` is now `born-green`, the
+    name `accept.py` and ruling 15 both already used for the same cause. Two
+    names for one cause is how a mapping stops being checkable.
     """
     write_run(repo, "20260816-090000-aaaa",
               [criterion("a", "Something", "unevidenced", reason=reason)])

@@ -76,8 +76,8 @@ def test_a_real_v2_bundle_renders_without_a_fixture_in_sight(tmp_path):
     assert "fields.Constant" in page
 
 
-def test_the_witness_lanes_own_unevidenced_cause_renders_UNTRANSLATED(tmp_path):
-    """**A FIFTH cause, found on real data, and rendering it honestly.**
+def test_the_witness_lanes_own_unevidenced_cause_is_NAMED(tmp_path):
+    """**A FIFTH cause, found on real data — and S2 discharging the handoff.**
 
     Ruling 15 enumerated four `unevidenced` causes from `accept.py` as it stood
     at `d23d7ca`. The witness lane added another: *no gate proves this
@@ -85,25 +85,35 @@ def test_the_witness_lanes_own_unevidenced_cause_renders_UNTRANSLATED(tmp_path):
     it is not unbound-with-nothing-else, not born green, not an unestablished
     pre-existence, and not a check that arrived with the work.
 
-    So it renders UNTRANSLATED with the engine's own words, which is exactly
-    what ruling 17 prescribes for a reason the mapping does not cover: *a PM
-    seeing an ugly string files a bug report; a PM seeing nothing has been lied
-    to.* Giving it the generic born-green sentence would be rendering one cause
-    as another, which ruling 15 exists to forbid.
+    **What this test asserted in S1, and why it changed.** S1 asserted the card
+    rendered UNTRANSLATED with the engine's own words, which is what ruling 17
+    prescribes for a reason the mapping does not cover, and then said in this
+    docstring: *"Naming it a fifth cause with its own sentence is S2's job, not
+    S1's. Recorded here so the next slice starts from a measured fact."*
 
-    **Naming it a fifth cause with its own sentence is S2's job**, not S1's.
-    Recorded here so the next slice starts from a measured fact.
+    S2 did that. The cause is `witness-evidenced-nothing`, it has its own
+    sentence in `refusals.MAPPING`, and the card is now NEEDS YOU rather than
+    UNTRANSLATED. **This assertion is flipped on the authority of the sentence
+    above it, in the commit that does the naming** — never quietly, because a
+    pinned assertion is a record of a decision and reversing one silently is
+    the defect this repository exists to catch.
+
+    What has NOT changed, and is still asserted below: it never gets another
+    cause's sentence. UNTRANSLATED was the honest answer while the mapping had
+    no entry; it would be a wrong answer now, and the generic born-green
+    sentence would have been a wrong answer in both slices.
     """
     board = read_module.read(_repo(tmp_path))
     card = cards.card_for(board, board.criteria[0])
 
-    assert card.state == cards.UNTRANSLATED
-    assert "could not collect it" in (card.engine_words or "")
+    assert card.state == cards.NEEDS_YOU
+    assert card.cause == "witness-evidenced-nothing"
+    assert "turned out to prove nothing" in card.sentence
 
     page = render_module.render(board)
     assert "never been recorded failing" not in page, (
-        "a cause the mapping does not cover was rendered as the generic "
-        "born-green sentence — one cause shown as another"
+        "the fifth cause was rendered as the generic born-green sentence — "
+        "one cause shown as another"
     )
 
 

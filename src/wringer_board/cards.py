@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from wringer_board import refusals
 from wringer_board.read import Board, Criterion
 
 # The six card states. **REFUSED is not among them and that is ruling 4a**:
@@ -31,41 +32,50 @@ UNTRANSLATED = "UNTRANSLATED"
 
 STATES = (DONE, NOT_YET, NOT_REACHED, NEEDS_YOU, UNKNOWN, UNTRANSLATED)
 
-# Ruling 15's four causes of `unevidenced`, discriminated. **Only the first is
-# structural** — `gate: null` — and the spec says so rather than pretending
-# otherwise. The other three are told apart by matching the engine's own
-# `reason` text, each pinned by a fixture test, so a wording change in
-# `accept.py` fails loudly instead of silently re-labelling a card.
+# Ruling 15's causes of `unevidenced`, discriminated. **There are FIVE, not the
+# four the ruling enumerated**, and the fifth is here because S1 met it on real
+# data and refused to render it as one of the others — see
+# `tests/test_real_bundles.py`, which recorded it and handed the naming to this
+# slice.
 #
-# A reason matching none of them renders UNTRANSLATED with the engine's words
-# verbatim (ruling 17) — never the generic born-green sentence, which would be
-# rendering one cause as another.
-UNEVIDENCED_CAUSES: tuple[tuple[str, re.Pattern[str], str], ...] = (
+# **Only the unbound case is structural** — `gate: null` with no witness — and
+# that is said rather than papered over. The rest are told apart by matching
+# the engine's own `reason` text, each pinned by a fixture test, so a wording
+# change in `accept.py` fails loudly instead of silently re-labelling a card.
+#
+# **Order is load-bearing.** The witness cause is matched FIRST, because its
+# reason string carries "could not collect" and neighbouring words that a
+# looser pattern below could claim. A reason matching none of them renders
+# UNTRANSLATED with the engine's words verbatim (ruling 17) — never a generic
+# sentence, which would be rendering one cause as another.
+#
+# The sentences live in `refusals.MAPPING`, not here. One table, so the
+# totality test has one thing to be total over.
+UNEVIDENCED_CAUSES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "witness-evidenced-nothing",
+        re.compile(r"witness evidences nothing", re.I),
+    ),
     (
         "arrived-with-the-work",
         re.compile(r"arrived with the change|created by the same change|"
                    r"did not exist before", re.I),
-        "A new check cannot vouch for the work that brought it. This check was "
-        "created by the same change it judges.",
     ),
     (
-        "never-recorded-failing",
+        # Renamed from `never-recorded-failing` in this slice, to the name
+        # `accept.py` and `SPEC_BOARD_V0` ruling 15 both already use for it.
+        # Two names for one cause is how a mapping stops being checkable.
+        "born-green",
         re.compile(r"never (been )?recorded failing|no record of (it|this gate) "
                    r"failing|born green|passed at its first", re.I),
-        "The check passes, but it has never been recorded failing — so passing "
-        "proves nothing yet.",
     ),
     (
         "pre-existence-unestablished",
         re.compile(r"could not (be )?establish|pre-change|sensitiv", re.I),
-        "The check passes, but this run could not establish that the check "
-        "existed before the change.",
     ),
 )
 
-UNBOUND = (
-    "Nothing checks this yet, so nobody can prove it either way."
-)
+UNBOUND = "unbound"
 
 
 @dataclass
@@ -187,21 +197,30 @@ def _gate_stderr(run: Path, gate_id: str | None) -> str | None:
 
 
 def _unevidenced(criterion: Criterion) -> tuple[str, str, str | None]:
-    """Which of ruling 15's FOUR causes, and the sentence for it.
+    """Which of ruling 15's FIVE causes, and the sentence for it.
 
-    Rendering the fourth as the second is false and backwards — the record
-    *does* show the gate can fail; the objection is that the gate is new. It is
-    also one of the three things the README advertises as breaking the
-    circularity objection, so getting it wrong here contradicts the README two
-    clicks away.
+    Rendering one as another is false and, in one direction, backwards — for a
+    check that arrived with the work the record *does* show the gate can fail;
+    the objection is that the gate is new. That is also one of the three things
+    the core README advertises as breaking the circularity objection, so
+    getting it wrong here contradicts the README two clicks away.
+
+    The text patterns are matched BEFORE the structural unbound fallback,
+    because the witness cause is also a `gate: null` row and would otherwise be
+    swallowed by it — which is exactly how a fifth cause hides inside a fourth.
     """
-    if criterion.gate_id is None and not (criterion.witness or {}).get("covers", True):
-        return "unbound", UNBOUND, None
-    if criterion.gate_id is None and criterion.witness is None:
-        return "unbound", UNBOUND, None
-    for name, pattern, sentence in UNEVIDENCED_CAUSES:
+    for name, pattern in UNEVIDENCED_CAUSES:
         if pattern.search(criterion.reason):
-            return name, sentence, None
+            saying = refusals.say(refusals.UNEVIDENCED_CAUSE, name)
+            if saying is None:      # a cause with no sentence is untranslated
+                break               # rather than silently generic
+            return name, saying.sentence, None
+
+    if criterion.gate_id is None:
+        saying = refusals.say(refusals.UNEVIDENCED_CAUSE, UNBOUND)
+        if saying is not None:
+            return UNBOUND, saying.sentence, None
+
     # Ruling 17: never invisibly, never swallowed, never prettified. A PM
     # seeing an ugly string files a bug report; a PM seeing nothing has been
     # lied to.
