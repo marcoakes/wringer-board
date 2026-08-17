@@ -47,7 +47,37 @@ def main(argv: list[str] | None = None) -> int:
              "identity or integrity",
     )
 
+    # --- S3, the interview surface (SPEC_BOARD_V0 §5 ruling 20) ------------
+    #
+    # Three verbs, each writing exactly what a hand edit writes, into
+    # `wringer.spec.yaml` and nothing else. **`approve` renders the plan before
+    # it writes** — there is no flag that skips it, because the whole point of
+    # the approval step is that a person read what is about to be built.
+    planned = sub.add_parser(
+        "plan", help="the plain-language plan: what will be built, and how "
+                     "each piece will be proved"
+    )
+    planned.add_argument("repo", nargs="?", default=".")
+
+    answered = sub.add_parser(
+        "answer", help="answer one of the spec's open questions, in the file"
+    )
+    answered.add_argument("repo", nargs="?", default=".")
+    answered.add_argument("--id", required=True, help="the question's id")
+    answered.add_argument("--text", required=True, help="the answer")
+
+    approved = sub.add_parser(
+        "approve",
+        help="write `approved: true` after printing the plan. Approving and "
+             "answering are never the same action",
+    )
+    approved.add_argument("repo", nargs="?", default=".")
+
     args = parser.parse_args(argv)
+
+    if args.command in ("plan", "answer", "approve"):
+        return _interview(args)
+
     repo = Path(args.repo).resolve()
     out = Path(args.out)
 
@@ -72,6 +102,37 @@ def main(argv: list[str] | None = None) -> int:
     render_module.write(board, out)
     print(f"wringer-board: {out}")
     return 0
+
+
+def _interview(args) -> int:
+    from wringer_board import interview
+
+    repo = Path(args.repo).resolve()
+    try:
+        if args.command == "plan":
+            print(interview.plan(repo), end="")
+            return 0
+        if args.command == "answer":
+            path = interview.answer(repo, args.id, args.text)
+            print(f"wringer-board: answered {args.id!r} in {path.name}")
+            still = interview.unanswered(repo)
+            if still:
+                names = ", ".join(q.id for q in still)
+                print(f"wringer-board: still unanswered: {names}")
+            return 0
+        # approve. **The plan is PRINTED, and that is what earns the write.**
+        print(interview.plan(repo), end="")
+        print("-" * 60)
+        path = interview.approve(repo, read_the_plan=True)
+        print(f"wringer-board: wrote `approved: true` into {path.name}")
+        print(
+            "wringer-board: nothing else changed. Answering a question and "
+            "approving a spec are never the same action."
+        )
+        return 0
+    except interview.InterviewError as exc:
+        print(f"wringer-board: {exc}", file=sys.stderr)
+        return exc.exit_code
 
 
 if __name__ == "__main__":  # pragma: no cover - the entry point

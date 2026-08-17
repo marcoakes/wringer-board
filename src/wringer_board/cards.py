@@ -111,6 +111,24 @@ class Card:
     receipt: str | None = None
     engine_words: str | None = None
     cause: str | None = None
+    # **The unblocking question — ruling 16's other half, rendered at last.**
+    #
+    # Every value in `refusals.MAPPING` has carried a sentence AND a question
+    # since S2. The totality test guarded both halves, so the questions were
+    # pinned against the engine and read by NOBODY: nothing on the surface
+    # rendered one. That is dead text reading as coverage, which is the defect
+    # this board exists to refuse, one level up.
+    #
+    # H-4 of the Fable rulings of 2026-08-17 folded it into S3 rather than a
+    # separate layout cycle, on the grounds that an interview is MADE of
+    # unblocking questions. A card that states a problem and not what is needed
+    # is a report; a card that asks is a conversation.
+    #
+    # None where the state genuinely asks nothing of anybody — a DONE card, and
+    # the questions that say so in words ("Nothing is needed from you") are
+    # still rendered, because "nothing is needed" is an answer to the question
+    # a reader is already asking.
+    question: str | None = None
 
 
 def _chain(board: Board, criterion: Criterion) -> tuple[bool, str | None, str | None]:
@@ -263,6 +281,24 @@ def _unevidenced(criterion: Criterion) -> tuple[str, str, str | None]:
     return "untranslated", "", criterion.reason
 
 
+def _answered_question(criterion: Criterion) -> str | None:
+    """What to ask about a `human` row a person has already answered `met`.
+
+    Not "is this met?" — they said so. The honest question is the one the
+    record's own limit raises: the answer is pinned to the WORDING and to
+    nothing else, so later work can break what was approved and nothing here
+    detects it.
+    """
+    judged = criterion.judgement
+    if not judged or judged.get("verdict") != "met":
+        return None
+    who = judged.get("by") or "somebody"
+    return (
+        f"{who} said this was met, against the requirement as worded then. "
+        "Nothing re-checks it — does it still hold?"
+    )
+
+
 def card_for(board: Board, criterion: Criterion) -> Card:
     """One criterion, rendered — and never scored."""
     refused = criterion.refuses
@@ -328,6 +364,23 @@ def card_for(board: Board, criterion: Criterion) -> Card:
         )
 
     if state == "human":
+        # **v3 tells the three human states apart.** Before `cause` existed
+        # this card said one thing for all of them — "a person has to decide
+        # this one" — which is true of an unanswered criterion, misleading for
+        # one a person has already answered NO to, and wrong for one whose
+        # answer went stale. The engine now names which, so the card can.
+        saying = (
+            refusals.say(refusals.UNEVIDENCED_CAUSE, criterion.cause)
+            if criterion.cause else None
+        )
+        if saying is not None:
+            return Card(
+                id=criterion.id, title=criterion.title, state=NEEDS_YOU,
+                sentence=saying.sentence, refused=refused,
+                cause=criterion.cause, question=saying.question,
+            )
+        # v1 and v2 records, and a v3 row a person has answered `met`: no
+        # cause, and nothing is being asked.
         return Card(
             id=criterion.id, title=criterion.title, state=NEEDS_YOU,
             sentence=(
@@ -335,6 +388,7 @@ def card_for(board: Board, criterion: Criterion) -> Card:
                 "Wringer will not pretend otherwise."
             ),
             refused=refused,
+            question=_answered_question(criterion),
         )
 
     if state == "unevidenced":
@@ -344,9 +398,11 @@ def card_for(board: Board, criterion: Criterion) -> Card:
                 id=criterion.id, title=criterion.title, state=UNTRANSLATED,
                 sentence="", refused=refused, engine_words=engine, cause=cause,
             )
+        saying = refusals.say(refusals.UNEVIDENCED_CAUSE, cause)
         return Card(
             id=criterion.id, title=criterion.title, state=NEEDS_YOU,
             sentence=sentence, refused=refused, cause=cause,
+            question=saying.question if saying else None,
         )
 
     return Card(

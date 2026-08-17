@@ -59,6 +59,10 @@ text-transform:uppercase;padding:3px 8px;border-radius:4px;margin:0 8px 0 0;vert
 .needsyou .state{background:var(--amberb);color:var(--amber)}
 .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
 text-transform:uppercase;padding:3px 8px;border-radius:4px;background:var(--redb);color:var(--red)}
+.ask{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);
+font-weight:600;color:var(--ink)}
+.needsyou .ask{color:var(--amber)}
+.done .ask,.notreached .ask{font-weight:400;color:var(--dim)}
 .said{margin:12px 0 0;padding:10px 14px;background:#f7f8fa;border:1px solid var(--line);
 border-radius:5px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
 white-space:pre-wrap;overflow-x:auto}
@@ -164,6 +168,16 @@ def _card_html(card: Card) -> str:
             '<div class="said"><span class="who">What the check itself '
             f"printed</span>{_esc(card.check_said)}</div>"
         )
+    if card.question:
+        # **The unblocking question, rendered — H-4.** Ruling 16 has given
+        # every value a question since S2 and nothing on this surface showed
+        # one, so half the mapping was guarded, pinned against the engine, and
+        # read by nobody. A card that states a problem without saying what is
+        # needed is a report; this is what makes the page a conversation.
+        #
+        # LAST in the card on purpose: a reader takes in the state, then what
+        # happened, then what is being asked of them.
+        parts.append(f'<p class="ask">{_esc(card.question)}</p>')
     parts.append("</div>")
     return "\n".join(parts)
 
