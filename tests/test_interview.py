@@ -516,3 +516,54 @@ def test_a_multi_line_answer_is_a_block_scalar_which_is_what_a_person_writes():
     assert rendered.startswith("|-\n")
     assert "      line one" in rendered
     assert "      line two" in rendered
+
+
+def test_the_plan_reads_INSTALLED_bindings_not_only_proposed_ones(tmp_path):
+    """**It said "NOTHING CHECKS THIS YET" about a criterion a gate binds.**
+
+    `wringer.gates.yaml` holds gates a drafter PROPOSED; `.wringer.yaml` holds
+    the ones a human INSTALLED, and only those run. `_bindings` read the
+    sidecar alone, so a repository that had already bound a criterion was told
+    nothing checked it — a false sentence, to the reader least able to check
+    it, on the page they approve from.
+
+    Found by driving DRIVE end to end against a repository with a binding.
+    """
+    (tmp_path / "wringer.spec.yaml").write_text(SPEC, encoding="utf-8")
+    (tmp_path / ".wringer.yaml").write_text(
+        'version: 1\ngates:\n  - id: export-works\n'
+        '    run: "grep -q text/csv report.py"\n    proves: csv-downloads\n',
+        encoding="utf-8",
+    )
+    text = interview.plan(tmp_path)
+    assert "NOTHING CHECKS THIS" not in text.split("copy-reads-well")[0], text
+    assert "`export-works`" in text
+    assert "seen to FAIL first" in text
+    assert "proposed, not installed" not in text
+
+
+def test_a_PROPOSED_gate_says_so_rather_than_reading_as_installed(tmp_path):
+    """The other direction, and it is the honest half: a proposal is not a
+    check yet, and a plan that read one as installed would promise a proof
+    nobody has agreed to run."""
+    (tmp_path / "wringer.spec.yaml").write_text(SPEC, encoding="utf-8")
+    (tmp_path / "wringer.gates.yaml").write_text(GATES, encoding="utf-8")
+
+    text = interview.plan(tmp_path)
+    assert "`export`" in text
+    assert "proposed, not installed yet" in text
+
+
+def test_an_installed_binding_wins_over_a_proposed_one(tmp_path):
+    """The plan describes what WILL happen, and what happens is what
+    `.wringer.yaml` says."""
+    (tmp_path / "wringer.spec.yaml").write_text(SPEC, encoding="utf-8")
+    (tmp_path / "wringer.gates.yaml").write_text(GATES, encoding="utf-8")
+    (tmp_path / ".wringer.yaml").write_text(
+        'version: 1\ngates:\n  - id: the-real-one\n    run: "true"\n'
+        "    proves: csv-downloads\n",
+        encoding="utf-8",
+    )
+    text = interview.plan(tmp_path)
+    assert "`the-real-one`" in text
+    assert "proposed, not installed" not in text

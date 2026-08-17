@@ -300,7 +300,15 @@ def plan(repo: Path) -> str:
                 "for it — you record the answer yourself"
             )
         elif cid in bound:
-            how = f"the check `{bound[cid]}` — and it must be seen to FAIL first"
+            gate, installed = bound[cid]
+            how = f"the check `{gate}` — and it must be seen to FAIL first"
+            if not installed:
+                # A PROPOSED gate is not a check yet. Saying so is the
+                # difference between a plan and a promise.
+                how += (
+                    " (proposed, not installed yet — somebody has to accept it "
+                    "before it runs)"
+                )
         else:
             how = (
                 "NOTHING CHECKS THIS YET. It will be reported as unevidenced "
@@ -327,22 +335,46 @@ def plan(repo: Path) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _bindings(repo: Path) -> dict[str, str]:
-    """`criterion id -> gate id`, from the sidecar if there is one."""
+CONFIG_FILENAME = ".wringer.yaml"
+
+
+def _bindings(repo: Path) -> dict[str, tuple[str, bool]]:
+    """`criterion id -> (gate id, installed?)`.
+
+    **Read from BOTH files, and the difference is not cosmetic.**
+    `wringer.gates.yaml` holds gates a drafter PROPOSED; `.wringer.yaml` holds
+    the ones a human INSTALLED, and only those actually run.
+
+    This read the sidecar alone until 2026-08-17, so a repository whose
+    `.wringer.yaml` already bound a criterion was told *"NOTHING CHECKS THIS
+    YET"* on its plan — a false sentence, to the one reader least able to
+    check it, on the page they approve from. Found by driving DRIVE end to end
+    against a repository that had a binding.
+
+    The installed one wins where both name a criterion: the plan describes what
+    will happen, and what happens is what `.wringer.yaml` says.
+    """
     import yaml
 
-    path = repo / GATES_FILENAME
-    if not path.is_file():
-        return {}
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    found = {}
-    for gate in (data or {}).get("gates") or []:
-        if isinstance(gate, dict) and gate.get("proves"):
-            found[str(gate["proves"])] = str(gate.get("id", "?"))
-    return found
+    def read(path: Path) -> dict[str, str]:
+        if not path.is_file():
+            return {}
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        found = {}
+        for gate in (data or {}).get("gates") or []:
+            if isinstance(gate, dict) and gate.get("proves"):
+                found[str(gate["proves"])] = str(gate.get("id", "?"))
+        return found
+
+    bindings: dict[str, tuple[str, bool]] = {
+        criterion: (gate, False) for criterion, gate in read(repo / GATES_FILENAME).items()
+    }
+    for criterion, gate in read(repo / CONFIG_FILENAME).items():
+        bindings[criterion] = (gate, True)
+    return bindings
 
 
 # --- capability 3: approve --------------------------------------------------
