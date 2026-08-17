@@ -150,7 +150,31 @@ MAPPING: dict[tuple[str, str], Saying] = {
         "Nothing is needed from you; the check has to exist before the work "
         "that it judges.",
     ),
-    # Loop endings. `graph.LOOP_REASONS`, eight values.
+    # **The three HUMAN causes** — `wringer.acceptance.v3`. The engine's
+    # `cause` is ONE closed enum of eight spanning `unevidenced` and `human`
+    # rows, so they live in this family rather than a second one; a separate
+    # vocabulary would mean the board could not render half of it.
+    #
+    # These are the cards the PM product exists for. Every other sentence here
+    # tells a PM what a machine found; these three tell them the machine has
+    # stopped and is waiting for THEM.
+    (UNEVIDENCED_CAUSE, "human-unanswered"): Saying(
+        "No check can decide this one — it needs a person to look and say. "
+        "Nobody has yet.",
+        "Is this requirement met? Only you can answer it.",
+    ),
+    (UNEVIDENCED_CAUSE, "human-said-no"): Saying(
+        "A person looked at this and said it is not met. Nothing here can "
+        "overrule that, and nothing tried to.",
+        "What would have to change for you to call this met?",
+    ),
+    (UNEVIDENCED_CAUSE, "human-judgement-stale"): Saying(
+        "Somebody answered this, but the requirement has been REWORDED since — "
+        "so the answer was given to a different question.",
+        "Does your earlier answer still hold for the requirement as it reads "
+        "now?",
+    ),
+    # Loop endings. `graph.LOOP_REASONS`, NINE values.
     (LOOP_ENDING, "converged"): Saying(
         "The work finished: the checks it was asked to satisfy are passing.",
         "Nothing is needed from you on this one.",
@@ -170,6 +194,13 @@ MAPPING: dict[tuple[str, str], Saying] = {
         "it again unchanged would not help.",
         "Nothing is needed from you; an engineer has to look at why it is "
         "stuck.",
+    ),
+    (LOOP_ENDING, "environment"): Saying(
+        "The work never started: the very first check could not run at all, "
+        "because the command it needs is not installed on the machine. No "
+        "attempt was made and nothing was changed.",
+        "Nothing is needed from you; the machine the work runs on has to be "
+        "set up first.",
     ),
     (LOOP_ENDING, "oscillating"): Saying(
         "The work stopped because it kept hitting the same failure over and "

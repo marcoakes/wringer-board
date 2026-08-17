@@ -29,7 +29,24 @@ from typing import Any
 # `refuses`. Both are handled explicitly below. **The rule ruling 6 actually
 # states is unchanged**: anything not on this list produces a banner naming the
 # version and NO CARDS AT ALL — not best-effort parsing, not partial rendering.
-KNOWN_ACCEPTANCE = ("wringer.acceptance.v1", "wringer.acceptance.v2")
+# v3 adds three keys per row and takes nothing away: `cause` (which of eight
+# named conditions put the row where it is), `demonstrated_able_to_fail`
+# (three-valued), and `judgement` (a person's answer to a `human` criterion).
+# All three are handled explicitly below.
+#
+# **This board learned v3 from bytes the ENGINE wrote**, not from fixtures
+# written here — `tests/test_acceptance_v3.py` reads
+# `schema/fixtures/acceptance-v3-*.json` out of the core repository, which the
+# core regenerates from `accept.Result.as_json_v3` on every run of its own
+# suite. A fixture written from the same guess as its reader is how a surface
+# comes to agree with itself and with nothing else, and this repository has
+# already paid for that once: eleven mutations walked through an absence guard
+# whose fixtures and whose reader shared one author's assumption.
+KNOWN_ACCEPTANCE = (
+    "wringer.acceptance.v1",
+    "wringer.acceptance.v2",
+    "wringer.acceptance.v3",
+)
 
 ACCEPTANCE_FILENAME = "acceptance.json"
 MANIFEST_FILENAME = "manifest.json"
@@ -106,6 +123,20 @@ class Criterion:
     reason: str
     receipt: dict[str, Any] | None
     witness: dict[str, Any] | None
+    # **v3.** The engine's own name for why this row is where it is. None on v1
+    # and v2, where the key does not exist — and None is exactly right there:
+    # "this record predates causes" and "this row needs no cause" both mean the
+    # board must fall back to reading the prose, which is what it did for every
+    # record until v3.
+    cause: str | None = None
+    # **v3, three-valued.** True/False/None, and None is NOT False: it means
+    # there was no bound (gate, command) to ask about, which includes a
+    # criterion covered by a witness with no gate — and such a row can still be
+    # `evidenced`.
+    demonstrated_able_to_fail: bool | None = None
+    # **v3.** A person's answer to a `human` criterion, verbatim. Never scored
+    # here, never re-checked here.
+    judgement: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -502,6 +533,9 @@ def read(
             # "this run carried no witness lane" and "this criterion had no
             # witness" are the same fact from a card's point of view.
             witness=row.get("witness"),
+            cause=row.get("cause"),
+            demonstrated_able_to_fail=row.get("demonstrated_able_to_fail"),
+            judgement=row.get("judgement"),
         ))
 
     board.vacuity = _load(board.run_dir / VACUITY_FILENAME)

@@ -28,6 +28,10 @@ ENGINE_VALUES: dict[str, frozenset[str]] = {
     refusals.CRITERION_STATE: frozenset(
         {"evidenced", "unevidenced", "gate-failed", "gate-did-not-run", "human"}
     ),
+    # EIGHT since `wringer.acceptance.v3`. One closed enum spanning
+    # `unevidenced` and `human` rows — not two vocabularies, because human
+    # causes outside a public symbol would be causes this board could not
+    # render.
     refusals.UNEVIDENCED_CAUSE: frozenset(
         {
             "unbound",
@@ -35,12 +39,18 @@ ENGINE_VALUES: dict[str, frozenset[str]] = {
             "born-green",
             "pre-existence-unestablished",
             "arrived-with-the-work",
+            "human-unanswered",
+            "human-said-no",
+            "human-judgement-stale",
         }
     ),
     refusals.LOOP_ENDING: frozenset(
         {
             "converged", "max_iterations", "budget_exhausted", "no_progress",
             "oscillating", "authority_moved", "flaky_gate", "interrupted",
+            # The ninth, from SPEC_ENV's F6: the first gate could not run at
+            # all, so no worker was ever briefed.
+            "environment",
         }
     ),
     refusals.VACUITY_VERDICT: frozenset(
@@ -116,7 +126,7 @@ def test_these_are_the_engines_own_values():
     import json
     from pathlib import Path
 
-    from wringer import graph, sign
+    from wringer import accept, graph, sign
 
     root = Path(wringer.__file__).resolve().parents[2]
     schema = root / "schema"
@@ -139,6 +149,13 @@ def test_these_are_the_engines_own_values():
             "properties", "state", "enum",
         ),
         refusals.LOOP_ENDING: frozenset(graph.LOOP_REASONS),
+        # **NEW, and the point of OQ-4.** This family used to be the one with
+        # no engine symbol to read: the causes were told apart by matching
+        # `accept.py`'s free text, so there was nothing to enumerate FROM and
+        # a reworded message could silently re-label a card. `accept.CAUSES`
+        # is now public and closed, so this family joins the derived set like
+        # every other and the hand-kept list above is checked against it.
+        refusals.UNEVIDENCED_CAUSE: frozenset(accept.CAUSES),
         refusals.VACUITY_VERDICT: enum(
             "vacuity.schema.json", "properties", "verdict", "enum"
         ),
@@ -166,19 +183,24 @@ def test_these_are_the_engines_own_values():
         )
 
 
-def test_the_unevidenced_causes_the_code_can_produce_are_all_mapped():
-    """The one family with no engine symbol to read, guarded from the code.
+def test_the_v1_and_v2_prose_fallback_still_selects_only_mapped_causes():
+    """**The FALLBACK path, which v3 does not delete.**
 
-    `unevidenced`'s causes are told apart by matching `accept.py`'s free text
-    (ruling 15 says so plainly), so there is nothing to enumerate FROM. What
-    there is: the patterns `cards.py` matches on, plus the structural unbound
-    branch. A cause the code can select and the mapping cannot say is exactly
-    the collapse ruling 15 forbids.
+    Since v3 the engine writes `cause` and this board reads it, so the regexes
+    are no longer how causes are told apart. They remain for v1 and v2 records,
+    which have no `cause` key and which this board must keep reading — so a
+    pattern that can select a name the mapping cannot say is still the collapse
+    ruling 15 forbids, just on a narrower path.
+
+    It is now a SUBSET check rather than equality: the mapping legitimately
+    covers three human causes no regex will ever select, because a v1 or v2
+    record has no human judgement in it to describe.
     """
     selectable = {name for name, _ in cards.UNEVIDENCED_CAUSES} | {cards.UNBOUND}
-    assert selectable == ENGINE_VALUES[refusals.UNEVIDENCED_CAUSE], (
-        f"cards.py can select {sorted(selectable)}; the mapping covers "
-        f"{sorted(ENGINE_VALUES[refusals.UNEVIDENCED_CAUSE])}"
+    covered = ENGINE_VALUES[refusals.UNEVIDENCED_CAUSE]
+    assert selectable <= covered, (
+        f"cards.py can select {sorted(selectable - covered)}, which the "
+        f"mapping cannot say"
     )
 
 

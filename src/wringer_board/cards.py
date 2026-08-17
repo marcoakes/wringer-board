@@ -57,9 +57,25 @@ UNEVIDENCED_CAUSES: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"witness evidences nothing", re.I),
     ),
     (
+        # **CORRECTED 2026-08-17, and it had never matched.** All three
+        # alternatives here were `arrived with the change`, `created by the
+        # same change` and `did not exist before`. The engine says *"arrived
+        # with the WORK"*, *"which this change CREATED"* and *"it did not exist
+        # YET"* — so none of the three fired, and this cause fell past every
+        # pattern to `untranslated`: the raw engine sentence, with no PM
+        # wording at all, on the single refusal the core README advertises as
+        # breaking the circularity charge.
+        #
+        # Found by `tests/test_acceptance_v3.py` while writing the v3 path, by
+        # feeding the ENGINE'S OWN strings through these patterns instead of
+        # strings written here. That is the entire argument for v3's `cause`
+        # field: a mapping keyed on somebody else's prose is a mapping that
+        # goes stale silently, and this one had. `test_the_patterns_match_the_
+        # engines_actual_words` now derives the check from real rows.
         "arrived-with-the-work",
-        re.compile(r"arrived with the change|created by the same change|"
-                   r"did not exist before", re.I),
+        re.compile(r"arrived with the (work|change)|created by the same change|"
+                   r"did not exist (yet|before)|which this change created",
+                   re.I),
     ),
     (
         # Renamed from `never-recorded-failing` in this slice, to the name
@@ -197,7 +213,17 @@ def _gate_stderr(run: Path, gate_id: str | None) -> str | None:
 
 
 def _unevidenced(criterion: Criterion) -> tuple[str, str, str | None]:
-    """Which of ruling 15's FIVE causes, and the sentence for it.
+    """Which cause, and the sentence for it.
+
+    **v3 first: the ENGINE'S OWN `cause` field beats every pattern below.**
+    Until v3 the only way to tell the causes apart was to match free text
+    against `accept.py`'s wording, which meant a reworded message could
+    silently re-label a card — the surface deciding what the engine said. When
+    the record carries a cause, the patterns are not consulted at all.
+
+    The prose matching stays for v1 and v2 records, which have no `cause` key
+    and which this board must keep reading. It is a fallback now, not the
+    mechanism.
 
     Rendering one as another is false and, in one direction, backwards — for a
     check that arrived with the work the record *does* show the gate can fail;
@@ -209,6 +235,16 @@ def _unevidenced(criterion: Criterion) -> tuple[str, str, str | None]:
     because the witness cause is also a `gate: null` row and would otherwise be
     swallowed by it — which is exactly how a fifth cause hides inside a fourth.
     """
+    if criterion.cause is not None:
+        saying = refusals.say(refusals.UNEVIDENCED_CAUSE, criterion.cause)
+        if saying is None:
+            # A cause the engine names and this board has no sentence for is
+            # UNTRANSLATED — named, never prettified, never silently generic.
+            # Ruling 17: a PM seeing an ugly string files a bug report; a PM
+            # seeing nothing has been lied to.
+            return "untranslated", "", criterion.reason
+        return criterion.cause, saying.sentence, None
+
     for name, pattern in UNEVIDENCED_CAUSES:
         if pattern.search(criterion.reason):
             saying = refusals.say(refusals.UNEVIDENCED_CAUSE, name)

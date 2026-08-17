@@ -195,9 +195,17 @@ def test_an_unknown_schema_version_renders_NO_CARDS_and_exits_nonzero(
 def test_the_versions_the_board_knows_include_the_WITNESS_lane(repo):
     """v2 is what a run carrying a witness lane writes, and the corpus re-test
     is exactly such a run. A board that knew only v1 could not render the very
-    artifact it was commissioned to show."""
+    artifact it was commissioned to show.
+
+    **v3 joined on 2026-08-17**, taught from bytes the engine wrote rather than
+    from fixtures written here — see `tests/test_acceptance_v3.py`. The engine
+    does not EMIT v3 yet: that gate is on the engine (`accept.EMIT_V3`), and it
+    exists so this board is never the thing that refuses to read the artifact
+    it was built to render."""
     assert read_module.KNOWN_ACCEPTANCE == (
-        "wringer.acceptance.v1", "wringer.acceptance.v2",
+        "wringer.acceptance.v1",
+        "wringer.acceptance.v2",
+        "wringer.acceptance.v3",
     )
     write_run(
         repo, "20260816-090000-aaaa",
