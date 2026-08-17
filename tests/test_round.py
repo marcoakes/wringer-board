@@ -156,6 +156,75 @@ def test_no_audit_report_means_the_page_never_says_UNSIGNED(repo):
     assert "signature" not in _round(page)
 
 
+_UNREADABLE = (
+    "absent",       # the operator named a path and the file is not there
+    "not_json",     # it is there and it is not JSON
+    "wrong_type",   # it is valid JSON and it is not an object
+    "empty",        # it is a valid empty object
+    "no_verdicts",  # it is the right shape and carries no verdict at all
+)
+
+
+@pytest.mark.parametrize("how", _UNREADABLE)
+@pytest.mark.parametrize("which", ("health", "audit"))
+def test_a_report_that_cannot_be_read_renders_NOTHING_rather_than_a_default(
+    repo, tmp_path, which: str, how: str
+):
+    """**The absence discipline, closed over every way a read can fail.**
+
+    The first version of this slice guarded absence in ONE shape — "no path was
+    given" — and an adversarial pass found eleven mutations that make the page
+    assert a verdict the engine never wrote while all fifty-six tests stayed
+    green. The worst was the one the commit message had singled out as watched:
+    splitting `read_audit`'s `if path is None or not path.is_file()` so that a
+    path pointing at a MISSING file returns `signature_missing`. A typo in an
+    operator's `--audit-report` would then have printed "Nobody signed this
+    record" — the surface reaching `sign.assess`'s conclusion by not looking,
+    which ruling 1 forbids outright, and the single most believable thing this
+    page could get wrong because that verdict is the ordinary local answer.
+
+    A path that was NAMED and could not be read is not the same fact as a path
+    that was never named, and neither is a verdict. Both render nothing here;
+    the second is reported to the operator by the engineers' block, and neither
+    is ever answered with a default.
+
+    Parametrised over both readers and over five ways a file can fail to be a
+    report, because the defect was never in one branch — it was in guarding one
+    branch and calling the discipline covered.
+    """
+    _with_cards(repo)
+    path = tmp_path / f"{which}.json"
+    if how == "not_json":
+        path.write_text("{not json at all", encoding="utf-8")
+    elif how == "wrong_type":
+        path.write_text('["a list, not an object"]', encoding="utf-8")
+    elif how == "empty":
+        path.write_text("{}", encoding="utf-8")
+    elif how == "no_verdicts":
+        payload = (
+            {"schema_version": "wringer.health.v1", "gates": [], "retired": []}
+            if which == "health"
+            else {"run": "20260816-000000-0000"}
+        )
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    # "absent": deliberately never written.
+
+    page = _page(repo, **{f"{which}_report": path})
+    families = (
+        (refusals.HEALTH_VERDICT,)
+        if which == "health"
+        else (refusals.SIGNATURE, refusals.IDENTITY, refusals.INTEGRITY)
+    )
+    for family in families:
+        for value in refusals.values_for(family):
+            saying = refusals.say(family, value)
+            assert saying.sentence not in page, (
+                f"a {which} report that was {how} produced {family}/{value} — "
+                "an unreadable measurement rendered as a verdict, which is the "
+                "one thing this section may never do"
+            )
+
+
 def test_an_artifact_appearing_LATER_starts_being_rendered(repo, tmp_path):
     """The absence test's other half: absence must be absence, not blindness.
 
