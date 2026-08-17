@@ -79,6 +79,11 @@ ENGINE_VALUES: dict[str, frozenset[str]] = {
     # invented ones, because `deliver.py` had no reason enum and naming them
     # here would have been the surface deciding what the engine says. It has
     # one now, so this is checked against it below like every other family.
+    # ONE value, and it is `accept.CAUSE_BORN_GREEN` — the same string the
+    # engine uses at the handover, said at the install question instead. A
+    # second value here would be a vocabulary this board invented; the family
+    # exists to move a fact earlier, not to add facts.
+    refusals.GATE_AT_INSTALL: frozenset({"born-green"}),
     refusals.DELIVERY_REFUSAL: frozenset({
         "acceptance_unevidenced", "authority_moved", "branch_exists",
         "branch_is_base", "branch_is_current", "branch_is_default",
@@ -171,6 +176,10 @@ def test_these_are_the_engines_own_values():
         # is now public and closed, so this family joins the derived set like
         # every other and the hand-kept list above is checked against it.
         refusals.UNEVIDENCED_CAUSE: frozenset(accept.CAUSES),
+        # Derived from the engine's own constant, not repeated as a literal:
+        # if `accept.CAUSE_BORN_GREEN` is ever renamed, this family goes red
+        # rather than quietly translating a string the engine stopped using.
+        refusals.GATE_AT_INSTALL: frozenset({accept.CAUSE_BORN_GREEN}),
         # The 23 delivery refusals, from the engine's own closed tuple. A 24th
         # reddens here rather than silently rendering untranslated on a card.
         refusals.DELIVERY_REFUSAL: frozenset(deliver.REFUSAL_REASONS),

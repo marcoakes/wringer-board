@@ -63,6 +63,15 @@ IDENTITY = "identity"
 INTEGRITY = "integrity"
 FLEET_OUTCOME = "fleet-outcome"
 DELIVERY_REFUSAL = "delivery-refusal"
+# **The same fact, said at the only moment a person can act on it.**
+# `UNEVIDENCED_CAUSE`'s `born-green` is what a reader meets at the HANDOVER,
+# on the record, when the work is finished and the answer is no. Measured on
+# 2026-08-17: the operator approved a check, and five seconds later was told
+# that check could never have failed. The information existed when they were
+# asked and nothing used it. This family is that information, said at the
+# question — a different sentence because it is a different moment: nothing
+# has been recorded yet, and the objection is about the tree as it stands.
+GATE_AT_INSTALL = "gate-at-install"
 
 FAMILIES = (
     CRITERION_STATE,
@@ -75,6 +84,7 @@ FAMILIES = (
     INTEGRITY,
     FLEET_OUTCOME,
     DELIVERY_REFUSAL,
+    GATE_AT_INSTALL,
 )
 
 
@@ -479,6 +489,18 @@ MAPPING: dict[tuple[str, str], Saying] = {
         "The handover is being held because a place to put it already "
         "exists, and overwriting it might destroy somebody's work.",
         "Nothing is needed from you; an engineer has to clear the way.",
+    ),
+    # **Said BEFORE the person answers, which is the whole reason it exists.**
+    # Ruling 18 holds: this does not soften anything and it does not decide.
+    # It is one fact and one question, put in front of the person while their
+    # answer can still change the outcome.
+    (GATE_AT_INSTALL, "born-green"): Saying(
+        "This check already passes against the project as it stands, so "
+        "nothing the work does can make it fail — which means either the "
+        "requirement is already met, or this check cannot tell the "
+        "difference.",
+        "Is this requirement already met, or does it need a different "
+        "check?",
     ),
 }
 
