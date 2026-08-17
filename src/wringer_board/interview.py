@@ -141,6 +141,21 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
 
     path = _spec_path(repo)
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    # **`wring spec` renders `answer: ''` UNCONDITIONALLY**, so an unanswered
+    # question already has an `answer:` key on disk. Appending a second one
+    # produced a mapping with a duplicate key — PyYAML happens to take the
+    # last, so nothing errored and the round-trip test passed, but a strict
+    # loader rejects it and the file is malformed. Same cause as the interlock
+    # bug above: the fixture was hand-typed and had no `answer:` line at all.
+    #
+    # So: fill an existing empty one in place, and only append when there is
+    # none. Both paths stay byte-identical to what a person would have typed.
+    filled = _fill_existing(lines, question_id, text)
+    if filled is not None:
+        path.write_text("".join(filled), encoding="utf-8")
+        return path
+
     out, inserted = [], False
     target = re.compile(r"^(\s*)-?\s*id:\s*['\"]?" + re.escape(question_id) + r"['\"]?\s*$")
     inside = False
@@ -166,6 +181,34 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
         )
     path.write_text("".join(out), encoding="utf-8")
     return path
+
+
+def _fill_existing(
+    lines: list[str], question_id: str, text: str
+) -> list[str] | None:
+    """Replace this question's EMPTY `answer:` in place, or None if it has none."""
+    target = re.compile(
+        r"^(\s*)-?\s*id:\s*['\"]?" + re.escape(question_id) + r"['\"]?\s*$"
+    )
+    inside = False
+    indent = ""
+    for index, line in enumerate(lines):
+        if not inside:
+            if target.match(line.rstrip("\n")) and _within_open_questions(lines, index):
+                inside = True
+                indent = _sibling_indent(line)
+            continue
+        if _ends_block(line, indent) and not line.strip().startswith("answer:"):
+            return None                      # left the block without finding one
+        if line.strip().startswith("answer:"):
+            existing = line.split(":", 1)[1].strip().strip("'\"")
+            if existing:
+                return None                  # a real answer; the caller refuses
+            copy = list(lines)
+            copy[index] = f"{indent}answer: {_scalar(text)}\n"
+            return copy
+    return None
+
 
 
 def _within_open_questions(lines: list[str], index: int) -> bool:
@@ -287,7 +330,27 @@ def _bindings(repo: Path) -> dict[str, str]:
 # --- capability 3: approve --------------------------------------------------
 
 
-APPROVED_LINE = re.compile(r"^approved:\s*(true|false)\s*$", re.I)
+# **The trailing comment is part of the line, and both halves of that matter.**
+# `wring spec` renders the interlock as:
+#
+#     approved: false        # <- the interlock. `wring plan` refuses while this is false.
+#
+# (`wringer/src/wringer/spec.py`). The first version of this pattern ended
+# `\s*$`, so it matched a hand-written `approved: false` and REFUSED every spec
+# the engine itself drafts — with the message "it does not invent structure",
+# which reads as a caller bug and is not one. It was never caught because this
+# package's fixture was hand-typed, i.e. written on the same side of the seam
+# as the reader. That is the identical failure mode that let eleven mutations
+# through this repository's absence guard, and it is why the fixture in
+# `test_interview.py` is now `spec.render()`'s real output.
+#
+# The comment is CAPTURED and written back verbatim: it is the sentence that
+# tells a person what the flag does, and a surface that silently deleted it
+# while flipping the flag would be removing the explanation of the thing it
+# just did.
+APPROVED_LINE = re.compile(
+    r"^approved:\s*(?P<value>true|false)\s*(?P<comment>#.*)?$", re.I
+)
 
 
 def approve(repo: Path, *, read_the_plan: bool) -> Path:
@@ -320,15 +383,22 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
-        if APPROVED_LINE.match(line.rstrip("\n")):
-            if line.rstrip("\n").split(":", 1)[1].strip().lower() == "true":
-                raise InterviewError(
-                    f"{SPEC_FILENAME} is already approved. Nothing was changed",
-                    exit_code=0,
-                )
-            lines[index] = "approved: true\n"
-            path.write_text("".join(lines), encoding="utf-8")
-            return path
+        match = APPROVED_LINE.match(line.rstrip("\n"))
+        if match is None:
+            continue
+        if match.group("value").lower() == "true":
+            raise InterviewError(
+                f"{SPEC_FILENAME} is already approved. Nothing was changed",
+                exit_code=0,
+            )
+        # Preserve the operator's own spacing and the interlock's comment. The
+        # only thing that changes is the word.
+        head, _, tail = line.rstrip("\n").partition("false")
+        if not head:      # the match was case-insensitive; fall back safely
+            head, tail = "approved: ", ""
+        lines[index] = f"{head}true{tail}\n"
+        path.write_text("".join(lines), encoding="utf-8")
+        return path
     raise InterviewError(
         f"{SPEC_FILENAME} has no top-level `approved:` line to set. This "
         "surface edits what is there; it does not invent structure"

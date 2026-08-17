@@ -356,3 +356,122 @@ def test_the_question_reaches_the_rendered_page():
     )
     assert 'class="ask"' in html
     assert "Which check should decide this requirement?" in html
+
+
+# --- the fixture that is the ENGINE'S OWN OUTPUT ---------------------------
+#
+# **These are the tests that would have caught two live defects, and did not
+# exist.** Every fixture above is hand-typed, i.e. written on the same side of
+# the seam as the reader — the identical failure mode that let eleven mutations
+# through this repository's absence guard, and the one this window had already
+# written into a commit message hours before repeating it here.
+#
+# The refute review of SPEC_DRIVE_V0 found both by driving `spec.render()`
+# through `interview`. What follows is that, as a test.
+
+
+def engine_spec_file(directory: Path) -> Path:
+    """A `wringer.spec.yaml` rendered by the ENGINE, not typed here."""
+    spec = pytest.importorskip("wringer.spec")
+    drafted = spec.Spec(
+        approved=False,
+        title="CSV export",
+        intent="A manager can export the report as a CSV.",
+        questions=(
+            spec.Question(id="which-columns", question="Which columns?", required=True),
+            spec.Question(id="filename", question="What filename?", required=False),
+        ),
+        criteria=(spec.Criterion(id="exports-csv", title="It exports a CSV", required=True),),
+        gates=(),
+        tasks=(spec.Task(id="build", brief="Build it", objective="It exports."),),
+        path="wringer.spec.yaml",
+    )
+    path = directory / "wringer.spec.yaml"
+    path.write_text(spec.render(drafted), encoding="utf-8")
+    return path
+
+
+def test_approve_accepts_the_spec_THIS_ENGINE_DRAFTS(tmp_path):
+    """**The defect this catches shipped.**
+
+    `wring spec` renders the interlock with a trailing comment:
+
+        approved: false        # <- the interlock. `wring plan` refuses …
+
+    and the first `APPROVED_LINE` ended `\\s*$`, so `approve` REFUSED every
+    spec the engine itself drafts, with the message *"it does not invent
+    structure"* — which reads as a caller bug and is not one.
+    """
+    engine_spec_file(tmp_path)
+    interview.answer(tmp_path, "which-columns", "The ones on screen.")
+
+    interview.approve(tmp_path, read_the_plan=True)
+
+    text = (tmp_path / "wringer.spec.yaml").read_text(encoding="utf-8")
+    assert "approved: true" in text
+    # **The interlock's own comment survives**, because it is the sentence that
+    # tells a person what the flag does. A surface that deleted the explanation
+    # while flipping the flag would be removing the reason for the thing it did.
+    line = next(l for l in text.splitlines() if l.startswith("approved:"))
+    assert "#" in line and "interlock" in line, line
+    # And the engine can read its own file back.
+    spec = pytest.importorskip("wringer.spec")
+    assert spec.load(tmp_path / "wringer.spec.yaml").approved is True
+
+
+def test_answer_FILLS_the_empty_answer_the_engine_already_wrote(tmp_path):
+    """**The second defect this catches shipped**, and it was invisible.
+
+    `wring spec` renders `answer: ''` unconditionally, so appending produced a
+    mapping with a DUPLICATE `answer:` key. PyYAML takes the last, so nothing
+    errored and the byte-equality test stayed green — its fixture had no
+    `answer:` line at all.
+    """
+    engine_spec_file(tmp_path)
+    interview.answer(tmp_path, "which-columns", "The ones on screen.")
+
+    text = (tmp_path / "wringer.spec.yaml").read_text(encoding="utf-8")
+    block = text.split("open_questions:", 1)[1]
+    first = block.split("- id: filename", 1)[0]
+    assert first.count("answer:") == 1, (
+        f"duplicate `answer:` key written into one mapping:\n{first}"
+    )
+    assert "answer: ''" not in first
+    assert "The ones on screen." in first
+
+    spec = pytest.importorskip("wringer.spec")
+    loaded = spec.load(tmp_path / "wringer.spec.yaml")
+    assert {q.id: q.answer for q in loaded.questions}["which-columns"] == (
+        "The ones on screen."
+    )
+    assert loaded.unanswered == ()
+
+
+def test_the_whole_S3_chain_runs_on_engine_output(tmp_path):
+    """plan → answer → plan → approve, against bytes the engine wrote.
+
+    The end-to-end version, so a future change that breaks any one link fails
+    here rather than in whatever composes them later.
+    """
+    engine_spec_file(tmp_path)
+
+    before = interview.plan(tmp_path)
+    assert "which-columns" in before and "will refuse" in before
+
+    interview.answer(tmp_path, "which-columns", "The ones on screen.")
+    after = interview.plan(tmp_path)
+    assert "STILL UNANSWERED" not in after, after
+
+    interview.approve(tmp_path, read_the_plan=True)
+    spec = pytest.importorskip("wringer.spec")
+    assert spec.load(tmp_path / "wringer.spec.yaml").approved is True
+
+
+def test_a_required_question_left_open_still_blocks_approval_on_engine_output(
+    tmp_path,
+):
+    engine_spec_file(tmp_path)
+    with pytest.raises(interview.InterviewError, match="still unanswered"):
+        interview.approve(tmp_path, read_the_plan=True)
+    spec = pytest.importorskip("wringer.spec")
+    assert spec.load(tmp_path / "wringer.spec.yaml").approved is False
