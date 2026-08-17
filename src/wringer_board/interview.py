@@ -258,8 +258,30 @@ def _scalar(text: str, indent: str = "    ") -> str:
                           text.rstrip("\n").split("\n"))
         return "|-\n" + body
     flat = " ".join(text.split())
+    quoted = '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
     if flat != text or any(c in text for c in ":#\"'") or not text.strip():
-        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        return quoted
+
+    # **And now ASK THE READER, rather than reasoning about it.** The rule
+    # above is a list of characters, and YAML's plain scalars are not decided
+    # by characters: `yes`, `no`, `true`, `off`, `null`, `~`, `1.5` and
+    # `2026-08-17` all reparse as a bool, None, a float or a date. A PM
+    # answering a drafter's question with "yes" — the likeliest answer anyone
+    # will ever type here — silently wrote a boolean, and `wring plan` then
+    # refused their own spec with "'answer' must be a string".
+    #
+    # Found by driving a real drafted spec through this writer and back
+    # through the ENGINE's loader, which is the only side that decides. Same
+    # class as the newline folding above: a rule about the text, where the
+    # question was what the reader does with it.
+    try:
+        import yaml
+
+        if yaml.safe_load(f"v: {text}")["v"] != text:
+            return quoted
+    except Exception:                                    # noqa: BLE001
+        # Unparseable bare is exactly the case quoting exists for.
+        return quoted
     return text
 
 

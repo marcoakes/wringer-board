@@ -488,6 +488,25 @@ def test_a_required_question_left_open_still_blocks_approval_on_engine_output(
     "has # a hash",
     'has "quotes" in it',
     "  leading and trailing  ",
+    # **YAML's plain scalars are not decided by which characters are in them**,
+    # which is what `_scalar` used to check. Every one of these round-tripped
+    # as a bool, None, a float or a date — and `yes` is the likeliest answer
+    # anybody will ever type into an interview. `wring plan` then refused the
+    # PM's own spec with "'answer' must be a string".
+    #
+    # Found by driving a REAL drafted spec through `wringer-drive`, not by
+    # reading this function.
+    "yes",
+    "no",
+    "true",
+    "off",
+    "null",
+    "~",
+    "1.5",
+    "12",
+    "2026-08-17",
+    "Yes",
+    "NO",
 ])
 def test_an_answer_round_trips_EXACTLY_through_the_engines_own_loader(tmp_path, text):
     """**`_scalar`'s docstring claimed this and it was false** (finding 15).
