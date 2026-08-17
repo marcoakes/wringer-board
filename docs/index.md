@@ -31,6 +31,28 @@ its best day is a brochure. These two were published together, on a day the
 programme's headline claim was
 [withdrawn after losing its own pre-registered test](https://github.com/marcoakes/wringer/blob/main/docs/corpus-2026-08-16.md).
 
+## What happened in the round, family by family
+
+The two pages above are about *requirements*. A run also produces facts that
+belong to no single requirement — how the loop ended, whether the checks were
+shown to be capable of failing, what `wring audit` made of the signature. Slice
+S2 gives each of those a sentence a PM can read, and these are one page per
+family, so the wording can be judged rather than described:
+
+- **[How the loop ended](captures/board-loop-ending-2026-08-16.html)**
+- **[Whether the checks could have failed](captures/board-vacuity-2026-08-16.html)**
+- **[Whether a check has stopped being able to fail](captures/board-health-2026-08-16.html)**
+- **[Signature, identity and integrity](captures/board-audit-axes-2026-08-16.html)** — as `wring audit` reported them; this board does not assess them itself
+- **[When the record has been altered](captures/board-integrity-broken-2026-08-16.html)**
+- **[How a fleet of tasks came out](captures/board-fleet-2026-08-16.html)**
+- **[A word this board has no wording for yet](captures/board-untranslated-ending-2026-08-16.html)** — shown in the engine's own words rather than hidden
+
+**Absence is not on this list, and that is the point.** Where an artifact was
+never written, the page says nothing about that family — it does not say
+"unsigned", "unhealthy" or "not measured by us". A missing measurement and a
+bad verdict are different facts, and rendering one as the other is the failure
+this whole layer exists to avoid.
+
 ## The ceiling, said here rather than buried
 
 A check that was demonstrated able to fail, and then made to pass, is real
