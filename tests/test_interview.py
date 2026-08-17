@@ -475,3 +475,44 @@ def test_a_required_question_left_open_still_blocks_approval_on_engine_output(
         interview.approve(tmp_path, read_the_plan=True)
     spec = pytest.importorskip("wringer.spec")
     assert spec.load(tmp_path / "wringer.spec.yaml").approved is False
+
+
+# --- multi-line answers, which a PM writes and which used to be lost -------
+
+
+@pytest.mark.parametrize("text", [
+    "one line",
+    "line one\nline two",
+    "First: the ones on screen.\nSecond: in that order.\nThird: no totals row.",
+    "has: a colon",
+    "has # a hash",
+    'has "quotes" in it',
+    "  leading and trailing  ",
+])
+def test_an_answer_round_trips_EXACTLY_through_the_engines_own_loader(tmp_path, text):
+    """**`_scalar`'s docstring claimed this and it was false** (finding 15).
+
+    A double-quoted YAML scalar containing a literal newline is FOLDED, so
+    `"line one\\nline two"` reparses as `line one line two`. A PM answering in
+    more than one sentence lost their line breaks with no error anywhere.
+
+    Byte-equality could not catch it, which is the interesting part: both
+    sides of that test go through `_scalar`, so it agreed with itself. This
+    checks the round trip against the ENGINE's loader instead.
+    """
+    spec = pytest.importorskip("wringer.spec")
+    engine_spec_file(tmp_path)
+    interview.answer(tmp_path, "which-columns", text)
+
+    loaded = spec.load(tmp_path / "wringer.spec.yaml")
+    got = {q.id: q.answer for q in loaded.questions}["which-columns"]
+    assert got == text, f"answer did not survive: {text!r} -> {got!r}"
+
+
+def test_a_multi_line_answer_is_a_block_scalar_which_is_what_a_person_writes():
+    """Byte-equality with a hand edit still holds, because `|-` is the form a
+    person reaching for multi-line YAML would use."""
+    rendered = interview._scalar("line one\nline two", "    ")
+    assert rendered.startswith("|-\n")
+    assert "      line one" in rendered
+    assert "      line two" in rendered

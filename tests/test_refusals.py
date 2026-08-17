@@ -74,7 +74,22 @@ ENGINE_VALUES: dict[str, frozenset[str]] = {
     # UNTRANSLATED with the engine's own words. Naming all twenty-three is
     # `SPEC_REFUSAL_V0.md` in the core repo, which is UNREVIEWED and UNBUILT —
     # so this table does not pretend those names exist.
-    refusals.DELIVERY_REFUSAL: frozenset({"acceptance", "vacuity", "staleness"}),
+    # **ALL 23, and they are the ENGINE's names since refusal R1 landed
+    # `deliver.REFUSAL_REASONS` on 2026-08-17.** This list used to hold three
+    # invented ones, because `deliver.py` had no reason enum and naming them
+    # here would have been the surface deciding what the engine says. It has
+    # one now, so this is checked against it below like every other family.
+    refusals.DELIVERY_REFUSAL: frozenset({
+        "acceptance_unevidenced", "authority_moved", "branch_exists",
+        "branch_is_base", "branch_is_current", "branch_is_default",
+        "case_alias_collision", "default_branch_unknown",
+        "files_unreadable_at_verify", "gates_did_not_pass", "gates_vacuous",
+        "head_moved", "no_git_identity", "nothing_to_deliver",
+        "remote_unreachable", "signature_required", "tracked_contents_differ",
+        "tree_moved", "unfinished_git_operation", "unsupported_file_type",
+        "untracked_file_moved", "untracked_record_unknown_version",
+        "untracked_record_unreadable",
+    }),
 }
 
 
@@ -126,7 +141,7 @@ def test_these_are_the_engines_own_values():
     import json
     from pathlib import Path
 
-    from wringer import accept, graph, sign
+    from wringer import accept, deliver, graph, sign
 
     root = Path(wringer.__file__).resolve().parents[2]
     schema = root / "schema"
@@ -156,6 +171,9 @@ def test_these_are_the_engines_own_values():
         # is now public and closed, so this family joins the derived set like
         # every other and the hand-kept list above is checked against it.
         refusals.UNEVIDENCED_CAUSE: frozenset(accept.CAUSES),
+        # The 23 delivery refusals, from the engine's own closed tuple. A 24th
+        # reddens here rather than silently rendering untranslated on a card.
+        refusals.DELIVERY_REFUSAL: frozenset(deliver.REFUSAL_REASONS),
         refusals.VACUITY_VERDICT: enum(
             "vacuity.schema.json", "properties", "verdict", "enum"
         ),

@@ -326,3 +326,96 @@ def test_the_prose_patterns_match_the_engines_ACTUAL_words():
         assert untranslated is None, (
             f"{row.cause} rendered untranslated: {untranslated!r}"
         )
+
+
+# --- the delivery refusal reaching a card ----------------------------------
+
+
+def test_a_real_refused_delivery_reaches_the_page_in_the_PMs_language(tmp_path):
+    """**The single most PM-relevant fact in the repository, which never
+    reached a card until 2026-08-17.**
+
+    *Your handover was stopped, and here is why.* The board mapped three
+    delivery reasons, none of which was among the engine's 23, and had no code
+    path to `.wringer/refusals/` at all — so this rendered as nothing.
+
+    The record here is written by the ENGINE's own `deliver.record_refusal`
+    from a real `deliver.Refused`, not by a fixture written in this repository.
+    """
+    deliver = pytest.importorskip("wringer.deliver")
+    from wringer_board import read as read_module
+    from wringer_board import refusals as refusals_module
+
+    repo = tmp_path / "repo"
+    (repo / ".wringer").mkdir(parents=True)
+    written = deliver.record_refusal(
+        repo,
+        deliver.Refused(
+            "refusing to deliver: its gates passed, but the spec is not "
+            "satisfied by the record",
+            1,
+            reason="acceptance_unevidenced",
+        ),
+        run="20260817-120000-aaaa",
+    )
+    assert written is not None and written.is_file()
+
+    found = read_module.latest_refusal(repo)
+    assert found == written
+
+    import json
+    reason = json.loads(found.read_text(encoding="utf-8"))["reason"]
+    saying = refusals_module.say(refusals_module.DELIVERY_REFUSAL, reason)
+    assert saying is not None, f"the engine emitted {reason!r} and the board has no sentence"
+    assert "handover is being held" in saying.sentence
+    assert saying.question.strip()
+
+
+def test_every_one_of_the_engines_23_refusals_has_a_sentence_and_a_question():
+    """Derived from `deliver.REFUSAL_REASONS`, both directions.
+
+    A 24th refusal reddens here rather than reaching a PM as a raw token like
+    `gates_did_not_pass`, which is what the whole chain ended in before this.
+    """
+    deliver = pytest.importorskip("wringer.deliver")
+    from wringer_board import refusals as refusals_module
+
+    mapped = {
+        value for (family, value) in refusals_module.MAPPING
+        if family == refusals_module.DELIVERY_REFUSAL
+    }
+    engine = set(deliver.REFUSAL_REASONS)
+    assert mapped == engine, {
+        "engine emits, board cannot say": sorted(engine - mapped),
+        "board says, engine cannot emit": sorted(mapped - engine),
+    }
+    for reason in sorted(engine):
+        saying = refusals_module.say(refusals_module.DELIVERY_REFUSAL, reason)
+        assert saying.sentence.strip() and saying.question.strip(), reason
+        # No house jargon reaches a PM.
+        for word in ("vacuity", "gategen", "witness", "ratchet", "unevidenced"):
+            assert word not in saying.sentence.lower(), (reason, word)
+
+
+def test_the_newest_refusal_wins_and_old_ones_are_history(tmp_path):
+    """A refusal from last week that somebody has since fixed is history, not
+    a verdict about the work in front of you."""
+    deliver = pytest.importorskip("wringer.deliver")
+    from wringer_board import read as read_module
+
+    repo = tmp_path / "repo"
+    root = repo / ".wringer" / "refusals"
+    for stamp, reason in (
+        ("20260810-090000-old1", "nothing_to_deliver"),
+        ("20260817-120000-new1", "gates_did_not_pass"),
+    ):
+        directory = root / stamp
+        directory.mkdir(parents=True)
+        (directory / "refusal.json").write_text(
+            '{"schema_version": "wringer.refusal.v1", "reason": "%s", '
+            '"exit_code": 1, "message": "m", "at": "x", "run": null}' % reason,
+            encoding="utf-8",
+        )
+    import json
+    found = read_module.latest_refusal(repo)
+    assert json.loads(found.read_text())["reason"] == "gates_did_not_pass"

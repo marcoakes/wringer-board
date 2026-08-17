@@ -171,7 +171,7 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
         # Inside the matched question: append after its last key line.
         nxt = lines[index + 1] if index + 1 < len(lines) else ""
         if _ends_block(nxt, indent):
-            out.append(f"{indent}answer: {_scalar(text)}\n")
+            out.append(f"{indent}answer: {_scalar(text, indent)}\n")
             inserted = True
             inside = False
     if not inserted:
@@ -205,7 +205,7 @@ def _fill_existing(
             if existing:
                 return None                  # a real answer; the caller refuses
             copy = list(lines)
-            copy[index] = f"{indent}answer: {_scalar(text)}\n"
+            copy[index] = f"{indent}answer: {_scalar(text, indent)}\n"
             return copy
     return None
 
@@ -237,10 +237,28 @@ def _ends_block(nxt: str, indent: str) -> bool:
     return lead < len(indent) or nxt.lstrip().startswith("-")
 
 
-def _scalar(text: str) -> str:
-    """A YAML scalar that round-trips to exactly `text`."""
+def _scalar(text: str, indent: str = "    ") -> str:
+    """A YAML scalar that round-trips to exactly `text`.
+
+    **It did not, and the docstring said it did.** A double-quoted scalar
+    containing a literal newline is FOLDED by YAML — `"line one\nline two"`
+    reparses as `line one line two` — so a PM answering a question in more
+    than one sentence silently lost their line breaks, with no error anywhere.
+    Found by the refute review of SPEC_DRIVE_V0 (finding 15).
+
+    Byte-equality could not catch it, and that is the interesting part: both
+    sides of that test go through this function, so it agreed with itself.
+
+    Multi-line text is now a **literal block scalar** (`|-`), which is the one
+    YAML form that preserves newlines exactly and is also the form a person
+    would write by hand — so byte-equality still holds against a hand edit.
+    """
+    if "\n" in text:
+        body = "\n".join(f"{indent}  {line}" if line else "" for line in
+                          text.rstrip("\n").split("\n"))
+        return "|-\n" + body
     flat = " ".join(text.split())
-    if flat != text or any(c in text for c in ":#\n\"'") or not text.strip():
+    if flat != text or any(c in text for c in ":#\"'") or not text.strip():
         return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return text
 

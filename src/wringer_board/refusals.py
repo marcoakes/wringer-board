@@ -333,34 +333,152 @@ MAPPING: dict[tuple[str, str], Saying] = {
         "Nothing is needed from you; an engineer has to look at what it was "
         "waiting for.",
     ),
-    # Delivery refusals. **Only three of the engine's twenty-three are named
-    # here, and that is the honest number, not an oversight.** `deliver.py`
-    # raises its refusals as prose with an exit code and no reason enum, so
-    # exactly three are reachable from an artifact this board can read
-    # (SPEC_BOARD_V0 ruling 19). The other twenty render UNTRANSLATED with the
-    # engine's own words, addressed to whoever runs the repository.
+    # **Delivery refusals — ALL TWENTY-THREE, derived from
+    # `deliver.REFUSAL_REASONS`.**
     #
-    # `SPEC_REFUSAL_V0.md` (core repo) specifies naming all twenty-three. It is
-    # UNREVIEWED and UNBUILT as of 2026-08-16, so this table does not pretend
-    # its names exist yet — inventing them here would be this surface deciding
-    # what the engine says, which ruling 1 forbids outright.
-    (DELIVERY_REFUSAL, "acceptance"): Saying(
-        "The handover is being held because at least one requirement cannot "
-        "show its proof.",
-        "See the cards above — each one that is holding this up says what it "
-        "needs.",
+    # This comment used to say three was "the honest number, not an oversight",
+    # because `deliver.py` raised its refusals as prose with no reason enum and
+    # inventing names here would have been the surface deciding what the engine
+    # says. That was true when it was written and stopped being true on
+    # 2026-08-17: refusal R1 landed `deliver.REFUSAL_REASONS`, a closed public
+    # tuple of 23, and every refused attempt now writes
+    # `.wringer/refusals/<id>/refusal.json` carrying one of them.
+    #
+    # So the names are the ENGINE's and this file only supplies sentences. The
+    # cross-check in `tests/test_refusals.py` is set-equality against that
+    # tuple in both directions, so a 24th refusal reddens rather than silently
+    # rendering untranslated.
+    #
+    # Most of these say "nothing is needed from you". That is not padding: a
+    # PM whose handover is blocked by a git-plumbing problem needs to know it
+    # is not theirs to solve, and saying so is the whole difference between a
+    # page that informs and a page that worries somebody.
+    (DELIVERY_REFUSAL, "unfinished_git_operation"): Saying(
+        "The handover is being held because the project is midway through "
+        "another operation that was never finished.",
+        "Nothing is needed from you; an engineer has to finish or abandon "
+        "it.",
     ),
-    (DELIVERY_REFUSAL, "vacuity"): Saying(
+    (DELIVERY_REFUSAL, "no_git_identity"): Saying(
+        "The handover is being held because the machine doing the work has "
+        "no name or email recorded, so nothing can be attributed to "
+        "anybody.",
+        "Nothing is needed from you; the machine has to be set up first.",
+    ),
+    (DELIVERY_REFUSAL, "remote_unreachable"): Saying(
+        "The handover is being held because the place it would be sent to "
+        "could not be reached.",
+        "Nothing is needed from you; this is usually a network or access "
+        "problem.",
+    ),
+    (DELIVERY_REFUSAL, "head_moved"): Saying(
+        "The handover is being held because the project moved underneath "
+        "this work while it was being checked, so the proof is about a "
+        "different version.",
+        "Nothing is needed from you; it has to be re-checked against the "
+        "current version.",
+    ),
+    (DELIVERY_REFUSAL, "tree_moved"): Saying(
+        "The handover is being held because the files changed after they "
+        "were checked, so the proof no longer describes what would be "
+        "handed over.",
+        "Nothing is needed from you; it has to be re-checked.",
+    ),
+    (DELIVERY_REFUSAL, "tracked_contents_differ"): Saying(
+        "The handover is being held because a file's contents differ from "
+        "what was checked.",
+        "Nothing is needed from you; it has to be re-checked.",
+    ),
+    (DELIVERY_REFUSAL, "untracked_record_unreadable"): Saying(
+        "The handover is being held because the record of newly added files "
+        "could not be read.",
+        "Nothing is needed from you; an engineer has to look at the "
+        "evidence.",
+    ),
+    (DELIVERY_REFUSAL, "untracked_record_unknown_version"): Saying(
+        "The handover is being held because the record of newly added files "
+        "is in a format this version does not read.",
+        "Nothing is needed from you; the tooling versions do not match.",
+    ),
+    (DELIVERY_REFUSAL, "files_unreadable_at_verify"): Saying(
+        "The handover is being held because a file could not be read when "
+        "the proof was assembled.",
+        "Nothing is needed from you; an engineer has to look at the file.",
+    ),
+    (DELIVERY_REFUSAL, "unsupported_file_type"): Saying(
+        "The handover is being held because the change includes a kind of "
+        "file this cannot safely hand over.",
+        "Nothing is needed from you; an engineer has to decide what to do "
+        "with it.",
+    ),
+    (DELIVERY_REFUSAL, "untracked_file_moved"): Saying(
+        "The handover is being held because a newly added file changed "
+        "after it was checked.",
+        "Nothing is needed from you; it has to be re-checked.",
+    ),
+    (DELIVERY_REFUSAL, "case_alias_collision"): Saying(
+        "The handover is being held because two files differ only in "
+        "capitalisation, which this computer treats as the same file.",
+        "Nothing is needed from you; an engineer has to rename one of them.",
+    ),
+    (DELIVERY_REFUSAL, "gates_vacuous"): Saying(
         "The handover is being held because the checks did not notice this "
         "change at all, so their passing says nothing about it.",
         "Nothing is needed from you; this needs a check that can tell the "
         "difference.",
     ),
-    (DELIVERY_REFUSAL, "staleness"): Saying(
+    (DELIVERY_REFUSAL, "authority_moved"): Saying(
         "The handover is being held because the requirements changed after "
-        "this work was started, so it was judged against a different question "
+        "this work started, so it was judged against a different question "
         "from the one you are asking now.",
         "Did you mean to change the requirements while this was running?",
+    ),
+    (DELIVERY_REFUSAL, "signature_required"): Saying(
+        "The handover is being held because this project requires work to "
+        "be signed, and this was not.",
+        "Nothing is needed from you; an engineer has to set up signing.",
+    ),
+    (DELIVERY_REFUSAL, "acceptance_unevidenced"): Saying(
+        "The handover is being held because at least one requirement cannot "
+        "show its proof.",
+        "See the cards above — each one holding this up says what it needs.",
+    ),
+    (DELIVERY_REFUSAL, "default_branch_unknown"): Saying(
+        "The handover is being held because it cannot tell which branch is "
+        "the project's main one, so it cannot be sure it is avoiding it.",
+        "Nothing is needed from you; an engineer has to tell it.",
+    ),
+    (DELIVERY_REFUSAL, "gates_did_not_pass"): Saying(
+        "The handover is being held because the project's own checks did "
+        "not pass on this work.",
+        "Nothing is needed from you; the work is not finished yet.",
+    ),
+    (DELIVERY_REFUSAL, "nothing_to_deliver"): Saying(
+        "There is nothing to hand over: no files were changed.",
+        "Nothing is needed from you; no work was done to deliver.",
+    ),
+    (DELIVERY_REFUSAL, "branch_is_base"): Saying(
+        "The handover is being held because it would deliver onto the "
+        "branch it is meant to be compared against.",
+        "Nothing is needed from you; an engineer has to point it somewhere "
+        "else.",
+    ),
+    (DELIVERY_REFUSAL, "branch_is_default"): Saying(
+        "The handover is being held because it would write straight onto "
+        "the project's main branch instead of proposing a change for "
+        "review.",
+        "Nothing is needed from you; that is the safety rule working.",
+    ),
+    (DELIVERY_REFUSAL, "branch_is_current"): Saying(
+        "The handover is being held because it would deliver onto the very "
+        "branch it is working on.",
+        "Nothing is needed from you; an engineer has to point it somewhere "
+        "else.",
+    ),
+    (DELIVERY_REFUSAL, "branch_exists"): Saying(
+        "The handover is being held because a place to put it already "
+        "exists, and overwriting it might destroy somebody's work.",
+        "Nothing is needed from you; an engineer has to clear the way.",
     ),
 }
 

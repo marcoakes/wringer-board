@@ -78,6 +78,14 @@ KNOWN_LOOP = ("wringer.loop.v1", "wringer.loop.v2")
 KNOWN_VACUITY = ("wringer.vacuity.v1",)
 KNOWN_FLEET = ("wringer.fleet.v1",)
 KNOWN_HEALTH = ("wringer.health.v1",)
+KNOWN_REFUSAL = ("wringer.refusal.v1",)
+
+# Where the engine writes a refused delivery. **Never under
+# `.wringer/deliveries/`** — an entry there is what `wring attest` takes as its
+# anchor, so a refusal record in that root would silently disable attestation
+# until the next success. The engine says so in `deliver.py` and this reader
+# depends on it.
+REFUSALS_DIRNAME = "refusals"
 
 
 class UnknownVersion(Exception):
@@ -299,6 +307,26 @@ def latest_fleet(repo: Path) -> Path | None:
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
+def latest_refusal(repo: Path) -> Path | None:
+    """The newest `refusal.json` under `.wringer/refusals/`, or None.
+
+    Run ids are UTC-stamped and sort chronologically, so the newest directory
+    name IS the newest refusal — read by name rather than by mtime, because a
+    checkout or a copy rewrites mtimes and would silently reorder history.
+    """
+    root = repo / ".wringer" / REFUSALS_DIRNAME
+    if not root.is_dir():
+        return None
+    records = sorted(
+        (d / "refusal.json" for d in root.iterdir() if d.is_dir()),
+        key=lambda path: path.parent.name,
+    )
+    for record in reversed(records):
+        if record.is_file():
+            return record
+    return None
+
+
 def _known(payload: Any, known: tuple[str, ...]) -> tuple[dict[str, Any] | None, str | None]:
     """`(payload, None)` if its version is known, `(None, version)` if it is not.
 
@@ -473,6 +501,27 @@ def read_facts(
                 if isinstance(status, str) and status and status not in seen:
                     seen.append(status)
             facts.extend(Fact(refusals.FLEET_OUTCOME, s) for s in seen)
+
+    # 6. **The delivery refusal, if the last attempt was refused.**
+    #
+    # Until 2026-08-17 nothing here read `.wringer/refusals/` at all, so the
+    # single most PM-relevant fact in the whole repository — *your handover was
+    # stopped, and here is why* — never reached a card. The refute review of
+    # SPEC_DRIVE found it: the board mapped three delivery reasons, none of
+    # which was among the engine's, and had no code path to any of them.
+    #
+    # The NEWEST record only. A refusal from last week that somebody has since
+    # fixed is history, not a verdict about the work in front of you, and this
+    # board renders the current state or nothing.
+    refusal = latest_refusal(board.repo)
+    if refusal is not None:
+        payload, unknown = _known(_load(refusal), KNOWN_REFUSAL)
+        if unknown is not None:
+            board.unreadable.append(f"refusal record: {unknown}")
+        elif payload is not None:
+            reason = payload.get("reason")
+            if isinstance(reason, str) and reason:
+                facts.append(Fact(refusals.DELIVERY_REFUSAL, reason))
 
     order = {family: index for index, family in enumerate(refusals.FAMILIES)}
     board.facts = sorted(facts, key=lambda fact: order.get(fact.family, 99))
