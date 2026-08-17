@@ -2,8 +2,12 @@
 #
 # Publishing is Settings -> Pages -> Deploy from a branch -> `main` / `/docs`.
 # This file is what makes that switch produce a readable page rather than a
-# directory listing; it is committed BEFORE publication on purpose, so
-# enabling Pages is one click and not a second round of edits.
+# directory listing; it was committed BEFORE publication on purpose, so
+# enabling Pages was one click and not a second round of edits.
+#
+# That switch has been thrown. Pages is enabled and serving:
+# https://marcoakes.github.io/wringer-board/ answered HTTP 200 on 2026-08-18,
+# and so did https://marcoakes.github.io/wringer-board/captures/.
 #
 # No `.nojekyll` here, deliberately: `index.md` is markdown and needs Jekyll to
 # become HTML. The captures under `captures/` are already complete HTML files

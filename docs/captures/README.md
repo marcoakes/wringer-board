@@ -56,8 +56,8 @@ the section does not render when there is nothing in it — not even a heading.
 
 Each `.html` above has a `.png` beside it. **The HTML is the evidence; the PNG
 is a convenience** — it exists so a reader who cannot open a local file still
-sees the page, and so this repository can show the surface before it is
-published anywhere.
+sees the page, and so a README, which renders images and not HTML, can show
+the surface at all.
 
 Each PNG was produced by loading the committed `.html` from disk in headless
 Chrome at a 1200px viewport and screenshotting it. **Nothing was styled,

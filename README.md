@@ -20,9 +20,12 @@ committed beside its own HTML in [`docs/captures/`](docs/captures/). The
 worth more: the same board on a day the evidence was not there, with the
 promise withheld.*
 
-**Not published yet, and this line says so rather than telling you to install
-something that does not exist.** There is no PyPI release and this repository
-is not public, so today the only way to run it is from a clone:
+**No PyPI release, and this line says so rather than telling you to install
+something that does not exist.** The source is public at
+[github.com/marcoakes/wringer-board](https://github.com/marcoakes/wringer-board)
+and a page rendered by this code is live at
+<https://marcoakes.github.io/wringer-board/>. What does not exist is a PyPI
+release, so today the only way to *run* it is from a clone:
 
 ```bash
 pip install -e .
@@ -30,8 +33,8 @@ wringer-board render /path/to/your/repo -o board.html
 open board.html
 ```
 
-When it is published, the first line becomes `pip install wringer-board` and
-nothing else about the command changes.
+Once there is a release, the first line becomes `pip install wringer-board`
+and nothing else about the command changes.
 
 One HTML file. No server, no account, no network. It reads the evidence
 [Wringer](https://github.com/marcoakes/wringer) already wrote into your
