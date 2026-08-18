@@ -42,6 +42,13 @@ repository and renders it; it never re-decides anything.
 
 ---
 
+
+> ### 👉 Are you a product manager rather than an engineer?
+>
+> There is a five-step guide that starts from nothing and ends with a page
+> showing what was built and what proves it:
+> [**wringer-drive/START-HERE.md**](https://github.com/marcoakes/wringer-drive/blob/main/START-HERE.md)
+
 ## What each card can say
 
 | | |

@@ -1,0 +1,55 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # **This repository had NO CI until 2026-08-19**, and its tests are the only
+  # thing holding the claim ceiling: `test_no_surface_string_claims_a_wrong_fix
+  # _was_caught` greps every sentence this surface can render, and until now it
+  # ran on one laptop and nowhere else.
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # **The engine, as a CHECKOUT rather than a wheel, and that is the whole
+      # point of this job.**
+      #
+      # `tests/test_refusals.py` cross-checks every value this board can
+      # translate against the engine's own symbols AND against the frozen
+      # schemas in its `schema/` directory. Without the engine it skips —
+      # loudly, saying which claim is going unchecked — and a wheel install
+      # would satisfy the import while leaving `schema/` absent, which skips
+      # the five schema-sourced families just as quietly.
+      #
+      # So: clone it. That is what makes the mapping's totality a checked
+      # property here rather than a hand-kept list.
+      - uses: actions/checkout@v4
+        with:
+          repository: marcoakes/wringer
+          path: .engine
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -e '.[dev]' -e ./.engine
+
+      # The skips this job exists to prevent. If either fires, the run is green
+      # while its central claim is unchecked, so say so as an annotation a
+      # reader can see without logs.
+      - name: Run pytest, and refuse to be quietly skipped
+        run: |
+          set -o pipefail
+          pytest -q -rs 2>&1 | tee /tmp/pytest.log
+          if grep -q "THE CENTRAL CLAIM OF THIS FILE IS UNCHECKED" /tmp/pytest.log; then
+            echo "::error title=engine cross-check skipped::the engine was not importable, so ENGINE_VALUES was not checked against it"
+            exit 1
+          fi
+          if grep -q "schema/\` is not on disk" /tmp/pytest.log; then
+            echo "::error title=schema cross-check skipped::the engine is importable but its schema/ is absent, so five families are unchecked"
+            exit 1
+          fi
