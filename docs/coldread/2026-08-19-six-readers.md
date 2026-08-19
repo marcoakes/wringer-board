@@ -175,3 +175,11 @@ It does not say what a human would do. See the ceiling above.
 
 And it does not fix anything: this file is the measurement. The fixes are
 separate, and each one should be able to point at a line in here.
+
+---
+
+*Commit note: `56aa6eb` carries this record AND, unrelated to it, this
+package's first release workflow plus its `__version__`. That was a
+`git add -A` sweeping up staged work, and the message describes only half of
+what landed. Recorded here rather than rewritten, because the history is
+already pushed and a dated note is how this programme corrects a record.*
