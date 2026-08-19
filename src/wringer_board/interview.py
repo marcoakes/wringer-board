@@ -352,8 +352,17 @@ def plan(repo: Path) -> str:
     data = _load(repo)
     bound = _bindings(repo)
     assumptions, outcomes = _decisions(repo)
-    answered = {
-        str(q.id): q.answer for q in questions(repo) if q.answered
+    # **Joined on the question's TEXT, not on its id** — the same discipline
+    # `carry_answers_forward` uses, and for the same reason. An assumption
+    # whose id merely coincides with some question's id had the plan printing
+    # "you answered this", quoting an answer to a different question, while
+    # SUPPRESSING the decision, the reason, and the displaced question the
+    # channel exists to show. An id is not a question.
+    #
+    # `_promote` copies `instead_of_asking` into `question:`, so the real
+    # supersession case joins exactly; a coincidence no longer joins at all.
+    answered_text = {
+        str(q.question).strip(): q.answer for q in questions(repo) if q.answered
     }
     lines = [
         data.get("title") or "This build",
@@ -378,8 +387,9 @@ def plan(repo: Path) -> str:
         ]
         for assumption in assumptions:
             aid = str(assumption.get("id", ""))
+            displaced = str(assumption.get("instead_of_asking", "")).strip()
             lines.append(f"  {aid}")
-            if aid in answered:
+            if displaced and displaced in answered_text:
                 # SUPERSEDED: the person came back and answered the displaced
                 # question, so this is no longer a decision anybody is being
                 # asked to approve. Rendering it as one — or rendering "you
@@ -387,7 +397,7 @@ def plan(repo: Path) -> str:
                 # approve from.
                 lines += [
                     f"    NO LONGER DECIDED FOR YOU — you answered this: "
-                    f"{answered[aid].strip()}",
+                    f"{answered_text[displaced].strip()}",
                     f"    (it had been: {assumption.get('decision', '')})",
                     "",
                 ]
@@ -488,10 +498,28 @@ def _decisions(repo: Path) -> tuple[list[dict], dict[str, str]]:
         return [], {}
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except Exception:                                    # noqa: BLE001
-        return [], {}
+    except Exception as exc:                             # noqa: BLE001
+        # **Never silently.** Swallowing this rendered a broken sidecar as "no
+        # decisions were taken for you" — a false and REASSURING sentence, on
+        # the page a person approves from, about the one thing this file
+        # exists to tell them. Absence and unreadable are different states and
+        # the plan must not show them as the same one.
+        raise InterviewError(
+            f"{DECISIONS_FILENAME} could not be read: {exc}. It records what "
+            "was decided for you, so the plan will not render while it is "
+            "unreadable — fix or remove it"
+        ) from exc
     if not isinstance(data, dict):
-        return [], {}
+        raise InterviewError(f"{DECISIONS_FILENAME} is not a mapping")
+    version = data.get("schema_version")
+    if version != "wringer.decisions.v1":
+        # The board refuses an unknown version everywhere else it reads engine
+        # bytes; this file is no different, and a future v2 must not be
+        # half-rendered by a reader that predates it.
+        raise InterviewError(
+            f"{DECISIONS_FILENAME} says 'schema_version: {version!r}', and this "
+            "surface reads wringer.decisions.v1. It will not guess"
+        )
     assumptions = [
         entry for entry in (data.get("assumptions") or [])
         if isinstance(entry, dict)
@@ -607,6 +635,33 @@ def revise(repo: Path, target_id: str, text: str) -> Path:
     path = _spec_path(repo)
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     known = {q.id: q for q in questions(repo)}
+
+    # An id in both places is AMBIGUOUS only when it is a coincidence. After a
+    # promotion the id is legitimately in both — `_promote` writes the
+    # assumption's `instead_of_asking` as the question's text — and revising
+    # again must simply edit that answer. So the two are told apart the same
+    # way the plan tells them apart: by the words, not by the id.
+    same_words = {
+        str(a.get("id", "")): str(a.get("instead_of_asking", "")).strip()
+        for a in _decisions(repo)[0]
+    }
+    collides = (
+        target_id in known
+        and target_id in same_words
+        and same_words[target_id] != str(known[target_id].question).strip()
+    )
+    if collides:
+        # **A verb that could mean two things must not guess.** It used to take
+        # the question branch silently: overwriting the person's own prior
+        # answer — the loss `answer`'s no-overwrite refusal exists to prevent,
+        # bypassed precisely because they were aiming at the assumption — and
+        # leaving the decision they meant to overrule standing.
+        raise InterviewError(
+            f"{target_id!r} is BOTH an open question and a decision that was "
+            "taken for you. This surface will not guess which you meant, and "
+            "nothing was changed. Answer the question by its id with `answer`, "
+            "or fix the two ids so they differ"
+        )
 
     if target_id in known:
         updated = _replace_existing(lines, target_id, text)

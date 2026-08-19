@@ -741,10 +741,17 @@ def test_the_plan_shows_what_was_decided_WITHOUT_asking(repo):
     assert "You were not asked: Should it follow a person" in text
 
 
-def test_an_assumption_the_person_ANSWERED_renders_as_superseded(repo):
-    """Once they have answered the displaced question, the decision is no
-    longer one they are being asked to approve — and 'you were not asked'
-    would be a false sentence on the page they approve from."""
+def test_an_id_COINCIDENCE_never_renders_as_though_they_had_answered(repo):
+    """**Reproduced by the adversarial review, and this test used to assert
+    the defect.** An assumption whose id merely coincides with some question's
+    id was joined BY ID, so the plan printed "NO LONGER DECIDED FOR YOU — you
+    answered this:" quoting an answer to a completely different question,
+    while SUPPRESSING the decision, the reason, and the displaced question
+    that the whole channel exists to show. The person was told a decision was
+    no longer being taken for them, and never saw what it was.
+
+    That is `carry_answers_forward`'s own rule — an id is not a question —
+    broken inside the consent surface itself. The join is on TEXT now."""
     (repo / "wringer.decisions.yaml").write_text(
         DECISIONS.replace("memory-scope", "which-columns"), encoding="utf-8"
     )
@@ -752,9 +759,55 @@ def test_an_assumption_the_person_ANSWERED_renders_as_superseded(repo):
 
     text = interview.plan(repo)
 
-    assert "NO LONGER DECIDED FOR YOU" in text
-    assert "Just the ones on screen." in text
-    assert "You were not asked" not in text
+    assert "NO LONGER DECIDED FOR YOU" not in text
+    assert "Just the ones on screen." not in text.split("HOW EACH PIECE")[0]
+    # The assumption still renders in full — decision, reason, and the
+    # question they were never asked.
+    assert "The export is remembered per browser only." in text
+    assert "You were not asked: Should it follow a person" in text
+
+
+def test_revise_REFUSES_an_id_that_is_both_a_question_and_a_decision(repo):
+    """A verb that could mean two things must not guess. It used to take the
+    question branch silently — overwriting the person's own prior answer,
+    which is the loss `answer`'s no-overwrite refusal exists to prevent,
+    bypassed precisely because they were aiming at the assumption."""
+    (repo / "wringer.decisions.yaml").write_text(
+        DECISIONS.replace("memory-scope", "which-columns"), encoding="utf-8"
+    )
+    interview.answer(repo, "which-columns", "Just the ones on screen.")
+
+    with pytest.raises(interview.InterviewError, match="BOTH an open question"):
+        interview.revise(repo, "which-columns", "Something else entirely.")
+
+    assert "Just the ones on screen." in (
+        repo / "wringer.spec.yaml"
+    ).read_text(encoding="utf-8")
+
+
+def test_an_unreadable_decisions_file_is_SAID_not_rendered_as_no_decisions(
+    repo,
+):
+    """Absence and unreadable are different states. Swallowing the error
+    rendered a broken sidecar as "no decisions were taken for you" — a false
+    and reassuring sentence, on the page a person approves from, about the one
+    thing this file exists to tell them."""
+    (repo / "wringer.decisions.yaml").write_text(
+        "schema_version: wringer.decisions.v1\nassumptions: [ unclosed",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(interview.InterviewError, match="could not be read"):
+        interview.plan(repo)
+
+
+def test_an_unknown_decisions_schema_version_is_refused(repo):
+    (repo / "wringer.decisions.yaml").write_text(
+        "schema_version: wringer.decisions.v2\nassumptions: []\n", encoding="utf-8"
+    )
+
+    with pytest.raises(interview.InterviewError, match="will not guess"):
+        interview.plan(repo)
 
 
 def test_the_plan_leads_with_the_OUTCOME_and_labels_the_objective(repo):
