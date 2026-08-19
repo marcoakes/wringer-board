@@ -199,6 +199,66 @@ def test_approve_and_the_hand_edit_are_byte_identical(repo, tmp_path):
     assert (repo / "wringer.spec.yaml").read_bytes() == hand.read_bytes()
 
 
+def test_approve_does_not_corrupt_a_hand_written_capital_False(repo):
+    """**A LIVE DEFECT, found 2026-08-19 by the adversarial review of
+    SPEC_PMPLAN_V0 — in shipped code, not in the spec under review.**
+
+    `approved: False` is valid YAML and PyYAML reads it as the boolean false,
+    so a person who wrote their own spec by hand can perfectly well have it.
+    `APPROVED_LINE` matches case-insensitively and therefore accepts it — and
+    the edit underneath was `partition("false")`, which is case-SENSITIVE. It
+    found nothing, so `head` became the entire line and the write produced
+
+        approved: Falsetrue
+
+    a corrupted spec that the engine's own loader then refuses with
+    "'approved' must be a boolean". The person's file is destroyed and the
+    error blames them for it.
+
+    This surface exists to edit files a person wrote (`_spec_path`'s own
+    message: *"this surface edits a spec a person or `wring spec` already
+    wrote"*), so "the engine only ever writes lowercase" is not a defence —
+    it is exactly the seam the board's fixtures kept landing on the wrong
+    side of.
+    """
+    path = repo / "wringer.spec.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("approved: false", "approved: False", 1),
+        encoding="utf-8",
+    )
+    interview.answer(repo, "which-columns", "The ones on screen.")
+
+    interview.approve(repo, read_the_plan=True)
+
+    after = path.read_text(encoding="utf-8")
+    assert "Falsetrue" not in after, f"the interlock line was corrupted: {after!r}"
+    import yaml
+    assert yaml.safe_load(after)["approved"] is True, (
+        "the file no longer parses with approved: true"
+    )
+
+
+def test_approve_preserves_the_operators_own_capitalisation_and_comment(repo):
+    """The line edit changes the WORD and nothing else — the same promise the
+    lowercase path already keeps, on a line a person capitalised."""
+    path = repo / "wringer.spec.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "approved: false", "approved:   False   # mine, and I capitalise", 1
+        ),
+        encoding="utf-8",
+    )
+    interview.answer(repo, "which-columns", "x")
+
+    interview.approve(repo, read_the_plan=True)
+
+    line = [
+        ln for ln in path.read_text(encoding="utf-8").splitlines()
+        if ln.startswith("approved:")
+    ][0]
+    assert line == "approved:   true   # mine, and I capitalise", line
+
+
 def test_there_is_no_way_to_approve_without_the_plan_being_rendered(repo):
     """**Ruling 20's forbidden button.** A button that approves without showing
     the plan is not the act the approval step exists for."""

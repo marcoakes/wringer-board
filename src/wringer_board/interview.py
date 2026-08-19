@@ -465,10 +465,29 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
             )
         # Preserve the operator's own spacing and the interlock's comment. The
         # only thing that changes is the word.
-        head, _, tail = line.rstrip("\n").partition("false")
-        if not head:      # the match was case-insensitive; fall back safely
-            head, tail = "approved: ", ""
-        lines[index] = f"{head}true{tail}\n"
+        #
+        # **Spliced on the MATCH's own span, and the previous version was a
+        # live corruption bug** (found 2026-08-19 by the adversarial review of
+        # SPEC_PMPLAN_V0, in this shipped code rather than in the spec it was
+        # reviewing). It was `partition("false")` — case-SENSITIVE — under a
+        # regex that matches case-INSENSITIVELY. A person's hand-written
+        # `approved: False` therefore matched, found no lowercase `false` to
+        # partition on, kept the whole line as `head`, and was written back as
+        #
+        #     approved: Falsetrue
+        #
+        # which the engine's loader then refuses with "'approved' must be a
+        # boolean" — the person's file destroyed and the error pointed at them.
+        # `False` is valid YAML for false, and this surface's entire purpose is
+        # editing files people wrote by hand, so nothing about it was exotic.
+        #
+        # Using `span("value")` means the replaced bytes are exactly the ones
+        # the pattern identified as the value, whatever its spelling, and every
+        # other byte on the line — indentation, spacing, the interlock's
+        # explanatory comment — is carried through untouched.
+        body = line.rstrip("\n")
+        start, end = match.span("value")
+        lines[index] = f"{body[:start]}true{body[end:]}\n"
         path.write_text("".join(lines), encoding="utf-8")
         return path
     raise InterviewError(
