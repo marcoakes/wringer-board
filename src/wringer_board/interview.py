@@ -221,15 +221,31 @@ def _replace_existing(
             # Everything belonging to this scalar: the key line, plus every
             # following line indented deeper than the key itself, which is
             # exactly a block scalar's body.
+            #
+            # **A BLANK LINE IS PART OF THE BODY, and stopping at one was a
+            # silent content corruption.** `_scalar` writes a paragraph break
+            # inside a `|-` block as a truly empty line, so this module creates
+            # the input its own reader mishandled: revising a multi-paragraph
+            # answer deleted only the first paragraph and left the rest
+            # orphaned — which YAML then FOLDED INTO THE NEW ANSWER. A person
+            # who retracted a sentence found it still in their answer, and in
+            # the builder's brief. The docstring above claimed this could not
+            # happen.
+            #
+            # So blanks are consumed, and the block ends at the first non-blank
+            # line indented no deeper than the key. A trailing run of blanks
+            # that belonged to the document rather than the scalar is given
+            # back below.
             end = index + 1
             while end < len(lines):
                 nxt = lines[end]
-                if not nxt.strip():
-                    break
-                lead = len(nxt) - len(nxt.lstrip())
-                if lead <= len(indent):
-                    break
+                if nxt.strip():
+                    lead = len(nxt) - len(nxt.lstrip())
+                    if lead <= len(indent):
+                        break
                 end += 1
+            while end - 1 > index and not lines[end - 1].strip():
+                end -= 1
             copy = list(lines)
             copy[index:end] = [f"{indent}answer: {_scalar(text, indent)}\n"]
             return copy
@@ -591,8 +607,47 @@ def _ending_block(data: dict, bound: dict) -> list[str]:
 MAX_OPEN_QUESTIONS = 20
 
 
+def _interlock_lines(lines: list[str]) -> list[int]:
+    """Every top-level `approved:` line, and there must be exactly one.
+
+    **PyYAML reads the LAST duplicate key; these edits found the FIRST.** With
+    two top-level `approved: true` lines — silently legal to PyYAML, silently
+    legal to the engine, refused by nothing anywhere — `revise` flipped the
+    first, reported "your approval was withdrawn", exited 0, and the engine
+    went on reading `approved=True`.
+
+    **The interlock failed OPEN, which is the one direction it may never
+    fail.** So this counts them, and every caller refuses rather than guessing
+    which of two consent records governs. Failing closed and loudly is the
+    only safe answer to a question the file itself does not settle.
+    """
+    return [
+        index for index, line in enumerate(lines)
+        if APPROVED_LINE.match(line.rstrip("\n"))
+    ]
+
+
+def _one_interlock(lines: list[str]) -> int:
+    found = _interlock_lines(lines)
+    if len(found) > 1:
+        raise InterviewError(
+            f"{SPEC_FILENAME} has {len(found)} top-level `approved:` lines "
+            f"(lines {', '.join(str(i + 1) for i in found)}). YAML reads the "
+            "last and a reader sees the first, so which one records your "
+            "consent is not something this surface will guess. Nothing was "
+            "changed — delete the ones that are not yours"
+        )
+    if not found:
+        raise InterviewError(
+            f"{SPEC_FILENAME} has no top-level `approved:` line to set. This "
+            "surface edits what is there; it does not invent structure"
+        )
+    return found[0]
+
+
 def _unapprove(lines: list[str]) -> list[str]:
     """Set the interlock back to false. A line edit, and it always runs."""
+    _one_interlock(lines)
     for index, line in enumerate(lines):
         match = APPROVED_LINE.match(line.rstrip("\n"))
         if match is None:
@@ -889,6 +944,9 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
     path = _spec_path(repo)
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
+    # Refuses two interlock lines rather than setting the one a reader sees
+    # while the engine obeys the other.
+    _one_interlock(lines)
     for index, line in enumerate(lines):
         match = APPROVED_LINE.match(line.rstrip("\n"))
         if match is None:
@@ -948,6 +1006,7 @@ def _unapprove_if_approved(lines: list[str]) -> list[str]:
 
     The interlock only ever tightens.
     """
+    _one_interlock(lines)
     for index, line in enumerate(lines):
         match = APPROVED_LINE.match(line.rstrip("\n"))
         if match is None:

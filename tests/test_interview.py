@@ -1125,3 +1125,66 @@ def test_the_withdrawal_covers_the_FILL_path_too(repo):
     text = path.read_text(encoding="utf-8")
     assert "approved: false" in text, text
     assert "export.csv" in text
+
+
+def test_two_interlock_lines_are_REFUSED_rather_than_guessed(repo):
+    """**The interlock failed OPEN, which is the one direction it may never
+    fail.** PyYAML reads the LAST duplicate key; these edits found the FIRST.
+    With two top-level `approved: true` lines — silently legal to PyYAML,
+    refused by nothing anywhere — `revise` flipped the first, printed "your
+    approval was withdrawn", exited 0, and the engine went on reading
+    approved=True."""
+    import yaml
+
+    path = repo / "wringer.spec.yaml"
+    interview.answer(repo, "which-columns", "x")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "approved: false", "approved: true\napproved: true", 1
+        ),
+        encoding="utf-8",
+    )
+
+    # Every verb that touches the interlock refuses, including `answer`.
+    with pytest.raises(interview.InterviewError, match="records your consent"):
+        interview.revise(repo, "which-columns", "y")
+    with pytest.raises(interview.InterviewError, match="records your consent"):
+        interview.answer(repo, "filename", "export.csv")
+    with pytest.raises(interview.InterviewError, match="records your consent"):
+        interview.approve(repo, read_the_plan=True)
+
+    # And nothing was changed on the way to refusing.
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["approved"] is True
+
+
+def test_revising_a_multi_PARAGRAPH_answer_retracts_all_of_it(repo):
+    """**Silent content corruption, reproduced.** `_scalar` writes a paragraph
+    break inside a `|-` block as a truly empty line, and the deletion walk
+    stopped at the first blank — so revising a multi-paragraph answer deleted
+    only the first paragraph and left the rest orphaned, which YAML then
+    FOLDED INTO THE NEW ANSWER. A person who retracted a sentence found it
+    still in their answer, and in the builder's brief.
+
+    `_replace_existing`'s own docstring claimed this could not happen."""
+    spec = pytest.importorskip("wringer.spec")
+    interview.answer(
+        repo, "which-columns", "First paragraph.\n\nSecond paragraph I retract."
+    )
+
+    interview.revise(repo, "which-columns", "Totally new answer.")
+
+    loaded = spec.load(repo / "wringer.spec.yaml")
+    got = {q.id: q.answer for q in loaded.questions}["which-columns"]
+    assert got == "Totally new answer.", got
+    assert "retract" not in (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+
+
+def test_a_multi_paragraph_answer_survives_being_written_and_read(repo):
+    """The other direction: the blank line is part of the body and must come
+    back intact, or the fix above would 'work' by destroying paragraphs."""
+    spec = pytest.importorskip("wringer.spec")
+    text = "First paragraph.\n\nSecond paragraph."
+    interview.answer(repo, "which-columns", text)
+
+    loaded = spec.load(repo / "wringer.spec.yaml")
+    assert {q.id: q.answer for q in loaded.questions}["which-columns"] == text
