@@ -803,7 +803,13 @@ def _promote(
         )
 
     block = [
-        f"  - id: {identifier}\n",
+        # Through the ENGINE's scalar rule, like the `question:` line below
+        # it. Written bare, an id YAML resolves as a non-string — `no`, `yes`,
+        # `on`, `123` — reads back as a bool or an int and the engine's own
+        # loader REFUSES the file. The board reported "updated, and your
+        # approval was withdrawn" for a write that made the spec unreadable to
+        # its only consumer, and no board verb could undo it.
+        f"  - id: {_engine_scalar(identifier)}\n",
         f"    question: {_engine_scalar(question)}\n",
         "    required: true\n",
         f"    answer: {_scalar(text, '    ')}\n",
