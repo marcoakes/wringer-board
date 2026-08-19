@@ -308,13 +308,16 @@ def test_an_already_approved_spec_is_recognised_in_every_yaml_true(repo, spellin
     spec already approved as `yes` must be seen as approved, not re-approved
     and not reported as structureless."""
     path = repo / "wringer.spec.yaml"
+    # Answer FIRST, then set the interlock — because answering a question now
+    # withdraws a standing approval, so doing it the other way round would
+    # destroy the very state this test exists to check.
+    interview.answer(repo, "which-columns", "x")
     path.write_text(
         path.read_text(encoding="utf-8").replace(
             "approved: false", f"approved: {spelling}", 1
         ),
         encoding="utf-8",
     )
-    interview.answer(repo, "which-columns", "x")
 
     with pytest.raises(interview.InterviewError, match="already approved"):
         interview.approve(repo, read_the_plan=True)
@@ -1057,3 +1060,68 @@ def test_revise_refuses_an_id_it_does_not_know_and_names_what_it_does(repo):
 def test_an_empty_revision_is_refused(repo):
     with pytest.raises(interview.InterviewError, match="not an answer"):
         interview.revise(repo, "which-columns", "   ")
+
+
+def test_answering_an_OPTIONAL_question_after_approval_withdraws_it(repo):
+    """**A hole in the invariant, found by the adversarial review of this
+    build.** `approve` only requires the REQUIRED questions to be answered, so
+    an OPTIONAL one could be answered afterwards — the document a person
+    approved changing underneath them, with `approved: true` still standing
+    and nothing said.
+
+    `revise` withdrew approval from the day it was written because a revision
+    always means reconsidering. This is the quieter case and needs the same
+    answer: any content change after an approval withdraws it. The interlock
+    only ever tightens."""
+    interview.answer(repo, "which-columns", "The ones on screen.")
+    interview.approve(repo, read_the_plan=True)
+    assert "approved: true" in (repo / "wringer.spec.yaml").read_text()
+
+    interview.answer(repo, "filename", "export.csv")
+
+    text = (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+    assert "approved: false" in text, text
+    assert "export.csv" in text
+
+
+def test_answering_BEFORE_approval_leaves_the_interlock_exactly_as_it_was(repo):
+    """The ordinary path, and it must stay a no-op: `approve` refuses while
+    required questions are open, so answering normally happens first."""
+    before = (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+
+    interview.answer(repo, "which-columns", "The ones on screen.")
+
+    after = (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+    # Exactly one line added, every original line still present, and the
+    # interlock byte-identical to how it started.
+    assert after.count("\n") == before.count("\n") + 1
+    for line in before.splitlines():
+        assert line in after.splitlines(), line
+    assert "approved: false" in after
+
+
+def test_the_withdrawal_covers_the_FILL_path_too(repo):
+    """`answer` has two write paths — fill an empty `answer:` in place, or
+    append one — and the interlock must be withdrawn on both. `wring spec`
+    renders `answer: ''` unconditionally, so the FILL path is the one a real
+    drafted spec takes; the fixture here has no `answer:` key, so it exercises
+    append. Both, or the hole stays open on the path that matters most."""
+    path = repo / "wringer.spec.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "  - id: filename\n    question: What should the file be called?\n"
+            "    required: false\n",
+            "  - id: filename\n    question: What should the file be called?\n"
+            "    required: false\n    answer: ''\n",
+        ),
+        encoding="utf-8",
+    )
+    interview.answer(repo, "which-columns", "The ones on screen.")
+    interview.approve(repo, read_the_plan=True)
+    assert "approved: true" in path.read_text(encoding="utf-8")
+
+    interview.answer(repo, "filename", "export.csv")
+
+    text = path.read_text(encoding="utf-8")
+    assert "approved: false" in text, text
+    assert "export.csv" in text

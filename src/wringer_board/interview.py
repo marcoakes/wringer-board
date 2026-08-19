@@ -153,7 +153,7 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
     # none. Both paths stay byte-identical to what a person would have typed.
     filled = _fill_existing(lines, question_id, text)
     if filled is not None:
-        path.write_text("".join(filled), encoding="utf-8")
+        path.write_text("".join(_unapprove_if_approved(filled)), encoding="utf-8")
         return path
 
     out, inserted = [], False
@@ -179,7 +179,7 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
             f"could not find where to write the answer for {question_id!r} in "
             f"{SPEC_FILENAME}. Nothing was changed — edit it by hand"
         )
-    path.write_text("".join(out), encoding="utf-8")
+    path.write_text("".join(_unapprove_if_approved(out)), encoding="utf-8")
     return path
 
 
@@ -929,3 +929,32 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
         f"{SPEC_FILENAME} has no top-level `approved:` line to set. This "
         "surface edits what is there; it does not invent structure"
     )
+
+
+def _unapprove_if_approved(lines: list[str]) -> list[str]:
+    """Withdraw a standing approval when the spec's content changes under it.
+
+    **`answer` used to leave `approved: true` alone, and that was a hole in
+    the invariant this surface is built on.** `approve` only requires the
+    REQUIRED questions to be answered, so an OPTIONAL one could be answered
+    afterwards: the document a person approved then changed underneath them,
+    with the approval still standing and nothing said.
+
+    `revise` un-approves unconditionally because a revision always means the
+    person is reconsidering. This is the quieter case and needs the same
+    answer: any content change after an approval withdraws it. Before
+    approval — the ordinary path, since `approve` refuses while required
+    questions are open — the file already says false and this is a no-op.
+
+    The interlock only ever tightens.
+    """
+    for index, line in enumerate(lines):
+        match = APPROVED_LINE.match(line.rstrip("\n"))
+        if match is None:
+            continue
+        if match.group("value").lower() not in _YAML_TRUE:
+            return lines
+        body = line.rstrip("\n")
+        start, end = match.span("value")
+        return lines[:index] + [f"{body[:start]}false{body[end:]}\n"] + lines[index + 1:]
+    return lines
