@@ -237,6 +237,22 @@ def render(board: Board) -> str:
         body.extend(f"<li>{_esc(limit)}</li>" for limit in board.limits)
         body.append("</ul></details>")
 
+    # **What this run recorded spending. Facts only, and never a price** —
+    # Wringer keeps no price table, because a number it cannot check is a
+    # number it must not print. Rendered only when something recorded a
+    # usage: absent is not zero, and a page saying "0 tokens" would claim
+    # more than the record supports.
+    if board.spend:
+        counted = ", ".join(
+            f"{name.replace('_', ' ')}: {value:,}"
+            for name, value in sorted(board.spend.items())
+        )
+        body.append(
+            "<p class=\"spend\">What this run recorded using — "
+            f"{_esc(counted)}. These are the counts the model and the worker "
+            "reported; Wringer does not price them.</p>"
+        )
+
     technical = [
         f"acceptance record: <code>{_esc(board.acceptance_version)}</code>",
         f"verifications in this loop: {len(board.attempts)}"

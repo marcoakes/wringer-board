@@ -183,6 +183,11 @@ class Board:
     # an artifact that is not there produces no entry, and the page then says
     # nothing about that family rather than rendering absence as a verdict.
     facts: list[Fact] = field(default_factory=list)
+    # What this run's own records say it spent. FACTS ONLY: token counts as
+    # recorded, never a price — the standing ruling is that Wringer does not
+    # keep a price table, because a number it cannot check is a number it must
+    # not print. Absent when nothing recorded a usage, and absent is not zero.
+    spend: dict[str, int] = field(default_factory=dict)
     # Artifacts that were on disk and declared a version this board does not
     # know. They produce NO fact — the board cannot know where a later version
     # put the field, and a value read from the wrong place is worse than a
@@ -527,6 +532,49 @@ def read_facts(
     board.facts = sorted(facts, key=lambda fact: order.get(fact.family, 99))
 
 
+
+def _spend(repo: Path, run_dir: Path | None, loop_dir: Path | None) -> dict[str, int]:
+    """Token counts this run's own records already carry.
+
+    **Facts, never a price.** Wringer keeps no price table — a number it
+    cannot check is a number it must not print — so this reads what the
+    drafting reply and the worker actually reported and adds nothing.
+
+    Absent when nothing recorded a usage, and ABSENT IS NOT ZERO: a run whose
+    worker reported no usage has not been shown to have spent nothing, and a
+    page saying "0 tokens" would be a claim the record does not support.
+    """
+    import json
+
+    totals: dict[str, int] = {}
+
+    def add(payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            value = payload.get(key)
+            if isinstance(value, int) and value >= 0:
+                totals[key] = totals.get(key, 0) + value
+
+    specs = repo / ".wringer" / "specs"
+    if specs.is_dir():
+        for response in sorted(specs.glob("*/response.json")):
+            try:
+                add(json.loads(response.read_text(encoding="utf-8")).get("usage"))
+            except Exception:            # noqa: BLE001 - a bad record is not a board error
+                continue
+    for directory in (run_dir, loop_dir):
+        if directory is None:
+            continue
+        usage = directory / "usage.json"
+        if usage.is_file():
+            try:
+                add(json.loads(usage.read_text(encoding="utf-8")))
+            except Exception:            # noqa: BLE001
+                continue
+    return totals
+
+
 def read(
     repo: Path,
     health_report: Path | None = None,
@@ -602,4 +650,5 @@ def read(
     # summary beside "there is no evidence here yet" would be a page arguing
     # with itself.
     read_facts(board, health_report=health_report, audit_report=audit_report)
+    board.spend = _spend(repo, board.run_dir, board.loop_dir)
     return board

@@ -391,3 +391,30 @@ def test_a_repository_with_no_evidence_says_so_rather_than_rendering_empty(repo)
     page = html_of(repo)
     assert "no evidence here yet" in page
     assert "DONE" not in page
+
+
+def test_the_board_says_what_the_run_RECORDED_using_and_never_a_price():
+    """Facts only. Wringer keeps no price table — a number it cannot check is
+    a number it must not print — so the page reports the counts the model and
+    the worker actually reported and adds nothing to them."""
+    board = read_module.Board(
+        repo=Path("."), spend={"prompt_tokens": 2206, "completion_tokens": 4813}
+    )
+    html = render_module.render(board)
+
+    assert "What this run recorded using" in html
+    assert "2,206" in html and "4,813" in html
+    assert "does not price them" in html
+    tail = html.split("What this run recorded using")[1][:400]
+    for money in ("$", "£", "€", "USD"):
+        assert money not in tail, f"the board priced something: {money}"
+
+
+def test_a_run_that_recorded_no_usage_says_NOTHING_rather_than_zero():
+    """Absent is not zero. A run whose worker reported no usage has not been
+    shown to have spent nothing, and "0 tokens" would be a claim the record
+    does not support — the same rule vacuity and health already follow."""
+    html = render_module.render(read_module.Board(repo=Path(".")))
+
+    assert "What this run recorded using" not in html
+    assert "0 tokens" not in html
