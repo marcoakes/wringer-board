@@ -388,24 +388,50 @@ def test_no_verb_writes_anything_but_the_spec_file(repo):
         "Nothing anywhere may write a person's answer for them"
     )
 
-    written = [
+    # **Writes go through the `_write` helper now**, which opens with
+    # `newline=""` so a CRLF document keeps its line endings — `write_text`
+    # translated them and rewrote every line in the file. The invariant is
+    # unchanged and this test keeps the same teeth: every write still targets
+    # the `path` that `_spec_path` returned, and there is still exactly one
+    # way to write.
+    direct = [
         n.lineno
         for n in ast.walk(tree)
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Attribute)
         and n.func.attr in ("write_text", "write_bytes", "mkdir", "unlink")
     ]
-    assert written, "the module writes nothing at all — that is also wrong"
-    # And every write is to the spec file: the only path builder is `_spec_path`.
+    assert not direct, (
+        f"a write bypasses `_write` at line(s) {direct}. One writer, so one "
+        "place has to be right about line endings and about the target"
+    )
+
+    writes = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Name)
+        and n.func.id == "_write"
+    ]
+    assert writes, "the module writes nothing at all — that is also wrong"
     assert "GATES_FILENAME" in source, "the sidecar is READ, so it is named"
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in ("write_text", "write_bytes"):
-                target = ast.get_source_segment(source, node.func.value) or ""
-                assert target == "path", (
-                    f"a write at line {node.lineno} targets {target!r}, not the "
-                    "`path` that `_spec_path` returned"
-                )
+    for node in writes:
+        target = ast.get_source_segment(source, node.args[0]) or ""
+        assert target == "path", (
+            f"a write at line {node.lineno} targets {target!r}, not the "
+            "`path` that `_spec_path` returned"
+        )
+
+    # `_write` itself is the ONE place allowed to open a file for writing.
+    opens = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "open"
+    ]
+    assert len(opens) == 2, (
+        f"expected exactly the reader and the writer to open a file, found "
+        f"{len(opens)} at {[n.lineno for n in opens]}"
+    )
 
 
 # --- H-4: the questions, rendered ------------------------------------------
@@ -1188,3 +1214,31 @@ def test_a_multi_paragraph_answer_survives_being_written_and_read(repo):
 
     loaded = spec.load(repo / "wringer.spec.yaml")
     assert {q.id: q.answer for q in loaded.questions}["which-columns"] == text
+
+
+def test_a_CRLF_spec_keeps_its_line_endings(repo):
+    """**B5, and it was broken on every verb.** `Path.read_text` opens with
+    `newline=None`, so universal-newline translation collapsed `\\r\\n` to
+    `\\n` before anything here saw it, and `write_text` re-emitted
+    `os.linesep`. A CRLF-authored spec came back LF-throughout: EVERY line
+    changed, not the one line the verb touched. A person hand-flipping the
+    interlock changes one line — that is the whole claim these line edits
+    exist to keep."""
+    path = repo / "wringer.spec.yaml"
+    path.write_bytes(path.read_text(encoding="utf-8").replace("\n", "\r\n").encode())
+    before = path.read_bytes()
+
+    interview.answer(repo, "filename", "export.csv")
+
+    after = path.read_bytes()
+    assert after.count(b"\r\n") == before.count(b"\r\n") + 1, (
+        "line endings were rewritten across the file"
+    )
+    assert after.count(b"\n") == after.count(b"\r\n"), "a bare LF was introduced"
+
+
+def test_an_LF_spec_is_not_given_CRLF_either(repo):
+    """The mirror. On Windows the same defect ran the other way."""
+    path = repo / "wringer.spec.yaml"
+    interview.answer(repo, "filename", "export.csv")
+    assert b"\r\n" not in path.read_bytes()

@@ -66,6 +66,35 @@ class Question:
         return bool(self.answer.strip())
 
 
+def _read(path: Path) -> str:
+    """Read preserving the file's own line endings.
+
+    **`Path.read_text` opens with `newline=None`**, so universal-newline
+    translation collapses `\r\n` to `\n` before anything here sees it, and
+    `write_text` then re-emits `os.linesep`. A CRLF-authored spec came back
+    LF-throughout: EVERY line changed, not the one line the verb touched.
+    That is precisely what B5 forbids — a person hand-flipping the interlock
+    changes one line — and "the person's file is the artifact of record"
+    is the whole reason these are line edits rather than a round-trip.
+    """
+    with path.open(encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def _write(path: Path, text: str) -> None:
+    """Write without translating line endings. The pair of `_read`.
+
+    Lines these verbs INSERT are built with `\\n`, so a CRLF document would
+    otherwise come back with one stray LF line among its CRLF ones — a file
+    no editor produced and no person typed. A spec is one or the other, so if
+    any CRLF survives the edit, every ending is made CRLF.
+    """
+    if "\r\n" in text:
+        text = text.replace("\r\n", "\n").replace("\n", "\r\n")
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+
+
 def _spec_path(repo: Path) -> Path:
     path = repo / SPEC_FILENAME
     if not path.is_file():
@@ -80,7 +109,7 @@ def _load(repo: Path) -> dict:
     import yaml
 
     try:
-        data = yaml.safe_load(_spec_path(repo).read_text(encoding="utf-8"))
+        data = yaml.safe_load(_read(_spec_path(repo)))
     except Exception as exc:  # pragma: no cover - yaml's own message is best
         raise InterviewError(f"{SPEC_FILENAME} could not be read: {exc}") from exc
     if not isinstance(data, dict):
@@ -140,7 +169,7 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
         )
 
     path = _spec_path(repo)
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines = _read(path).splitlines(keepends=True)
 
     # **`wring spec` renders `answer: ''` UNCONDITIONALLY**, so an unanswered
     # question already has an `answer:` key on disk. Appending a second one
@@ -153,7 +182,7 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
     # none. Both paths stay byte-identical to what a person would have typed.
     filled = _fill_existing(lines, question_id, text)
     if filled is not None:
-        path.write_text("".join(_unapprove_if_approved(filled)), encoding="utf-8")
+        _write(path, "".join(_unapprove_if_approved(filled)))
         return path
 
     out, inserted = [], False
@@ -179,7 +208,7 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
             f"could not find where to write the answer for {question_id!r} in "
             f"{SPEC_FILENAME}. Nothing was changed — edit it by hand"
         )
-    path.write_text("".join(_unapprove_if_approved(out)), encoding="utf-8")
+    _write(path, "".join(_unapprove_if_approved(out)))
     return path
 
 
@@ -688,7 +717,7 @@ def revise(repo: Path, target_id: str, text: str) -> Path:
         )
 
     path = _spec_path(repo)
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines = _read(path).splitlines(keepends=True)
     known = {q.id: q for q in questions(repo)}
 
     # An id in both places is AMBIGUOUS only when it is a coincidence. After a
@@ -728,7 +757,7 @@ def revise(repo: Path, target_id: str, text: str) -> Path:
                 f"could not find exactly one `answer:` line for {target_id!r} "
                 f"in {SPEC_FILENAME}. Nothing was changed — edit it by hand"
             )
-        path.write_text("".join(_unapprove(updated)), encoding="utf-8")
+        _write(path, "".join(_unapprove(updated)))
         return path
 
     assumptions, _ = _decisions(repo)
@@ -808,7 +837,7 @@ def _promote(
             "is nowhere to record your answer. This surface edits what is "
             "there; it does not invent structure"
         )
-    path.write_text("".join(_unapprove(out)), encoding="utf-8")
+    _write(path, "".join(_unapprove(out)))
     return path
 
 
@@ -942,7 +971,7 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
         )
 
     path = _spec_path(repo)
-    text = path.read_text(encoding="utf-8")
+    text = _read(path)
     lines = text.splitlines(keepends=True)
     # Refuses two interlock lines rather than setting the one a reader sees
     # while the engine obeys the other.
@@ -981,7 +1010,7 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
         body = line.rstrip("\n")
         start, end = match.span("value")
         lines[index] = f"{body[:start]}true{body[end:]}\n"
-        path.write_text("".join(lines), encoding="utf-8")
+        _write(path, "".join(lines))
         return path
     raise InterviewError(
         f"{SPEC_FILENAME} has no top-level `approved:` line to set. This "
