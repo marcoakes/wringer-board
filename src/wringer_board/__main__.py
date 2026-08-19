@@ -15,7 +15,14 @@ from wringer_board import read as read_module
 from wringer_board import render as render_module
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The parser, built separately so a release gate can ASK the
+    package what verbs it has instead of keeping a list that drifts.
+    The core's release workflow shipped a hardcoded list of thirteen
+    commands and stayed at thirteen while four more shipped — a gate
+    probing an ever-smaller fraction of the wheel while printing a
+    number that was false for two releases.
+    """
     parser = argparse.ArgumentParser(
         prog="wringer-board",
         description=(
@@ -83,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     approved.add_argument("repo", nargs="?", default=".")
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command in ("plan", "answer", "revise", "approve"):

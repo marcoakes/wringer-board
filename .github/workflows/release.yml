@@ -1,0 +1,145 @@
+name: release
+
+# Publish to PyPI when a v* tag is pushed — with NO stored credential.
+#
+# **This package has never been published, and that is why `pip install
+# wringer-drive` cannot work today**: the drive declares `wringer-board` as a
+# dependency, and a dependency that is not on the index makes the whole
+# install unresolvable. Proved from a clean venv on 2026-08-19:
+#
+#   × No solution found when resolving dependencies:
+#   ╰─▶ Because wringer-board was not found in the package registry ...
+#
+# So the install story for a product manager was "clone three repositories",
+# which is the source juggling this file exists to end.
+#
+# PyPI Trusted Publishing exchanges GitHub's OIDC token for a short-lived
+# upload token at the moment of publish. There is no secret in this repo, none
+# in a keychain, and none to rotate or leak — which matters more here than in
+# most projects, because this is the surface whose pitch is that it never
+# handles a credential.
+#
+# ONE-TIME SETUP, on pypi.org (Marc, once — nothing publishes until this is
+# done, and this workflow will fail loudly rather than quietly if it is not):
+#   Publishing -> Add a new PENDING publisher
+#     PyPI project name: wringer-board
+#     Owner:             marcoakes
+#     Repository:        wringer-board
+#     Workflow name:     release.yml
+#     Environment:       pypi
+#   Then create the `pypi` environment under Settings -> Environments. A
+#   required reviewer there means a tag alone cannot publish without a human.
+#
+# ORDERING NOTE: `wringer-drive` depends on this package, so this one must be
+# published FIRST or the drive's own release will not resolve.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish, e.g. v0.4.0"
+        required: true
+
+jobs:
+  # The tag is a claim that the suite was green. Check it rather than trusting
+  # whoever tagged — the same argument this project makes about agents.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+      # The engine, as a checkout: `tests/test_refusals.py` cross-checks every
+      # value this surface can translate against the engine's own symbols and
+      # its frozen schemas, and SKIPS loudly without it. A release that
+      # published while that check was skipped would ship the mapping's
+      # central claim unverified.
+      - uses: actions/checkout@v4
+        with:
+          repository: marcoakes/wringer
+          path: .engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[dev]' -e ./.engine
+      - name: The suite must be green at the tag, and not quietly skipped
+        run: |
+          set -o pipefail
+          pytest -q -rs 2>&1 | tee /tmp/pytest.log
+          if grep -q "THE CENTRAL CLAIM OF THIS FILE IS UNCHECKED" /tmp/pytest.log; then
+            echo "::error title=engine cross-check skipped::publishing would ship an unverified mapping"
+            exit 1
+          fi
+
+      - name: The tag and the package version must agree
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          PKG="v$(python -c 'import wringer_board; print(wringer_board.__version__)')"
+          echo "tag=$TAG package=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error title=version mismatch::tag $TAG but package $PKG"
+            exit 1
+          fi
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      # Prove the artifact before it leaves. `pip install wringer-board` is
+      # what a stranger gets, and the verbs are DERIVED from the installed
+      # package's own parser rather than listed here — a hand-kept list in a
+      # gate is the stale-claim class this project hunts everywhere else, and
+      # the core's release workflow already learned that lesson the hard way.
+      - name: The wheel installs and every verb runs
+        run: |
+          python -m venv /tmp/probe
+          /tmp/probe/bin/pip install --quiet dist/*.whl
+          VERBS=$(/tmp/probe/bin/python -c '
+          from wringer_board.__main__ import build_parser
+          print(" ".join(
+              name
+              for action in build_parser()._actions
+              if getattr(action, "choices", None)
+              for name in action.choices
+          ))
+          ')
+          echo "probing: $VERBS"
+          test -n "$VERBS" || { echo "::error title=no verbs found::the probe would pass while checking nothing"; exit 1; }
+          for v in $VERBS; do
+            /tmp/probe/bin/wringer-board "$v" --help > /dev/null || {
+              echo "::error title=broken verb::$v"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      # Pinned to a commit, not a mutable branch: this job holds
+      # `id-token: write`, so whoever could move that branch could mint a PyPI
+      # token in this repository's name.
+      - uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc  # v1.12.4
+        with:
+          skip-existing: true
