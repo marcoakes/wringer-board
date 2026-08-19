@@ -298,18 +298,77 @@ def plan(repo: Path) -> str:
     """
     data = _load(repo)
     bound = _bindings(repo)
+    assumptions, outcomes = _decisions(repo)
+    answered = {
+        str(q.id): q.answer for q in questions(repo) if q.answered
+    }
     lines = [
         data.get("title") or "This build",
         "",
         (data.get("intent") or "").strip(),
         "",
-        "WHAT I WILL BUILD",
-        "",
     ]
+
+    if assumptions:
+        # **Board SCAFFOLDING, like `WHAT I WILL BUILD` beneath it.** Ruling 1
+        # governs the board re-describing an ENGINE FACT; a section heading is
+        # not one. What sits under it is the drafter's own field, verbatim —
+        # and it must stay that way, because per-roll variance in the wording
+        # of a consent surface is the defect this block exists to answer, not
+        # a fix for it.
+        lines += [
+            "DECIDED WITHOUT ASKING YOU",
+            "",
+            "  These were decided for you. Approving this plan approves them.",
+            "  Each one says the question it replaced, so you can ask it after all.",
+            "",
+        ]
+        for assumption in assumptions:
+            aid = str(assumption.get("id", ""))
+            lines.append(f"  {aid}")
+            if aid in answered:
+                # SUPERSEDED: the person came back and answered the displaced
+                # question, so this is no longer a decision anybody is being
+                # asked to approve. Rendering it as one — or rendering "you
+                # were not asked" — would be a false sentence on the page they
+                # approve from.
+                lines += [
+                    f"    NO LONGER DECIDED FOR YOU — you answered this: "
+                    f"{answered[aid].strip()}",
+                    f"    (it had been: {assumption.get('decision', '')})",
+                    "",
+                ]
+                continue
+            lines += [
+                f"    {assumption.get('decision', '')}",
+                f"    Why: {assumption.get('why', '')}",
+                f"    You were not asked: {assumption.get('instead_of_asking', '')}",
+                "",
+            ]
+
+    lines += ["WHAT I WILL BUILD", ""]
     for task in data.get("tasks") or []:
-        if isinstance(task, dict):
-            lines.append(f"  - {task.get('objective') or task.get('brief') or task.get('id')}")
-    lines += ["", "HOW EACH PIECE WILL BE PROVED", ""]
+        if not isinstance(task, dict):
+            continue
+        tid = str(task.get("id", ""))
+        objective = task.get("objective") or task.get("brief") or tid
+        # **Two registers, prominence to the person's.** The outcome is what
+        # they will be able to DO; the objective is instructions for whoever
+        # builds it, and is labelled as such rather than left to look like a
+        # promise made to the reader.
+        if tid in outcomes:
+            lines += [
+                f"  {outcomes[tid]}",
+                f"    For the engineer: {objective}",
+                "",
+            ]
+        else:
+            lines += [
+                "  (no plain-language outcome was written for this task)",
+                f"    For the engineer: {objective}",
+                "",
+            ]
+    lines += ["HOW EACH PIECE WILL BE PROVED", ""]
     for criterion in data.get("criteria") or []:
         if not isinstance(criterion, dict):
             continue
@@ -338,6 +397,8 @@ def plan(repo: Path) -> str:
             )
         lines += [f"  {title}", f"    {need} — {how}", ""]
 
+    lines += _ending_block(data, bound)
+
     still = unanswered(repo)
     if still:
         lines += [
@@ -355,6 +416,95 @@ def plan(repo: Path) -> str:
         "",
     ]
     return "\n".join(lines).rstrip() + "\n"
+
+
+DECISIONS_FILENAME = "wringer.decisions.yaml"
+
+
+def _decisions(repo: Path) -> tuple[list[dict], dict[str, str]]:
+    """The plain-language sidecar: assumptions, and outcomes by task id.
+
+    Absent or unreadable is not an error — this file is optional, an offline
+    repository may never have one, and a plan that refused without it would
+    make the whole surface depend on a channel that only `--send` fills.
+    """
+    import yaml
+
+    path = repo / DECISIONS_FILENAME
+    if not path.is_file():
+        return [], {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:                                    # noqa: BLE001
+        return [], {}
+    if not isinstance(data, dict):
+        return [], {}
+    assumptions = [
+        entry for entry in (data.get("assumptions") or [])
+        if isinstance(entry, dict)
+    ]
+    outcomes = {
+        str(row["task"]): str(row["outcome"])
+        for row in (data.get("outcomes") or [])
+        if isinstance(row, dict) and row.get("task") and row.get("outcome")
+    }
+    return assumptions, outcomes
+
+
+def _ending_block(data: dict, bound: dict) -> list[str]:
+    """What the run will do with each class of requirement.
+
+    **Counts only, and the omission is deliberate** (SPEC_PMPLAN_V0 ruling 9,
+    after review C2). Three sentences a reader would want here — that an
+    unbound criterion cannot hold the handover, that a bound one can, that an
+    unanswered `human` one will — are statements about ENGINE BEHAVIOUR, and
+    board ruling 1 says this layer renders engine facts rather than authoring
+    prose about them. `refusals.py` maps refusals that HAPPENED and has no
+    saying for one that will not, and the delivery saying does not fit either:
+    its second half is *"See the cards above"*, and at approval time there are
+    no cards. So the counts render — they are a reading of data this module
+    already holds — and the sentences wait for a saying added engine-side.
+
+    **The three classes come from the INSTALLED flag, not from boundness.**
+    `_bindings()` merges proposed gates (`wringer.gates.yaml`) with installed
+    ones (`.wringer.yaml`); acceptance joins on the installed ones alone
+    (`accept.assess` builds its map from `cfg.gates`). Counting a proposed
+    gate as a bound check would make this block contradict the criteria block
+    a few lines above it, which already says "proposed, not installed yet".
+    """
+    checked = human = nothing = 0
+    for criterion in data.get("criteria") or []:
+        if not isinstance(criterion, dict):
+            continue
+        cid = str(criterion.get("id", ""))
+        if criterion.get("human"):
+            human += 1
+        elif cid in bound and bound[cid][1]:
+            checked += 1
+        else:
+            nothing += 1
+    total = checked + human + nothing
+    if not total or not (human or nothing):
+        # Everything is installed-bound: there is no surprise to warn about,
+        # and a block predicting an ending that will not happen is noise.
+        return []
+
+    lines = ["WHAT WILL HAPPEN AT THE END", ""]
+    lines.append(f"  {checked} of {total} have a check bound to them.")
+    if human:
+        lines.append(
+            f"  {human} {'is' if human == 1 else 'are'} yours to decide — no "
+            "check can, and you record the answer yourself."
+        )
+    if nothing:
+        lines.append(f"  {nothing} have nothing checking them yet.")
+    lines += [
+        "",
+        "  Approving this plan accepts that the ones with nothing checking",
+        "  them will not be proved.",
+        "",
+    ]
+    return lines
 
 
 CONFIG_FILENAME = ".wringer.yaml"

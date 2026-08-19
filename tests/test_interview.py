@@ -707,3 +707,150 @@ def test_an_installed_binding_wins_over_a_proposed_one(tmp_path):
     text = interview.plan(tmp_path)
     assert "`the-real-one`" in text
     assert "proposed, not installed" not in text
+
+
+# --- SPEC_PMPLAN_V0: the consent surface ------------------------------------
+
+DECISIONS = """\
+schema_version: wringer.decisions.v1
+assumptions:
+  - id: memory-scope
+    decision: The export is remembered per browser only.
+    why: The requirements describe no accounts.
+    instead_of_asking: Should it follow a person to another device?
+outcomes:
+  - task: build-export
+    outcome: You can download exactly the rows you are looking at.
+"""
+
+
+def test_the_plan_shows_what_was_decided_WITHOUT_asking(repo):
+    """**The channel the drafter did not have.** Measured 2026-08-19: told to
+    prefer visible assumptions and given no field for one, it wrote decisions
+    into criteria' test guidance — where the person approving never reads them
+    as decisions. This is where they read them as decisions."""
+    (repo / "wringer.decisions.yaml").write_text(DECISIONS, encoding="utf-8")
+
+    text = interview.plan(repo)
+
+    assert "DECIDED WITHOUT ASKING YOU" in text
+    assert "Approving this plan approves them" in text
+    assert "The export is remembered per browser only." in text
+    # The displaced question travels with it — that is what stops the channel
+    # becoming a tidier hiding place than `guidance` was.
+    assert "You were not asked: Should it follow a person" in text
+
+
+def test_an_assumption_the_person_ANSWERED_renders_as_superseded(repo):
+    """Once they have answered the displaced question, the decision is no
+    longer one they are being asked to approve — and 'you were not asked'
+    would be a false sentence on the page they approve from."""
+    (repo / "wringer.decisions.yaml").write_text(
+        DECISIONS.replace("memory-scope", "which-columns"), encoding="utf-8"
+    )
+    interview.answer(repo, "which-columns", "Just the ones on screen.")
+
+    text = interview.plan(repo)
+
+    assert "NO LONGER DECIDED FOR YOU" in text
+    assert "Just the ones on screen." in text
+    assert "You were not asked" not in text
+
+
+def test_the_plan_leads_with_the_OUTCOME_and_labels_the_objective(repo):
+    """Two registers, prominence to the person's. The objective is
+    instructions for whoever builds it and is labelled as such, rather than
+    left to look like a promise made to the reader."""
+    (repo / "wringer.decisions.yaml").write_text(DECISIONS, encoding="utf-8")
+
+    text = interview.plan(repo)
+    build = text.split("WHAT I WILL BUILD")[1].split("HOW EACH PIECE")[0]
+
+    assert "You can download exactly the rows you are looking at." in build
+    assert "For the engineer:" in build
+    assert build.index("You can download") < build.index("For the engineer:")
+
+
+def test_a_task_with_no_outcome_says_so_rather_than_going_silent(repo):
+    (repo / "wringer.decisions.yaml").write_text(
+        DECISIONS.split("outcomes:")[0], encoding="utf-8"
+    )
+
+    text = interview.plan(repo)
+
+    assert "no plain-language outcome was written for this task" in text
+
+
+def test_the_ending_block_counts_INSTALLED_bindings_not_proposed_ones(tmp_path):
+    """**Review C1's second leg, and the fixture is the point.** `_bindings()`
+    merges proposed gates with installed ones; acceptance joins on the
+    installed ones alone. Counting a proposal as a bound check would make this
+    block contradict the criteria block a few lines above it, which already
+    says "proposed, not installed yet".
+
+    The default `repo` fixture is proposed-only — the one shape in which this
+    defect is invisible — so this builds its own with BOTH files.
+    """
+    (tmp_path / "wringer.spec.yaml").write_text(SPEC, encoding="utf-8")
+    (tmp_path / "wringer.gates.yaml").write_text(GATES, encoding="utf-8")
+
+    proposed_only = interview.plan(tmp_path)
+    block = proposed_only.split("WHAT WILL HAPPEN AT THE END")[1]
+    assert "0 of" in block, block
+
+    (tmp_path / ".wringer.yaml").write_text(
+        'version: 1\ngates:\n  - id: export-works\n'
+        '    run: "grep -q text/csv report.py"\n    proves: csv-downloads\n',
+        encoding="utf-8",
+    )
+    installed = interview.plan(tmp_path)
+    assert "1 of" in installed.split("WHAT WILL HAPPEN AT THE END")[1]
+
+
+def test_the_ending_block_counts_human_criteria_as_their_own_class(repo):
+    """A `human` criterion is unbound BY DESIGN — nothing will ever check it.
+    Folding it into "nothing checking them yet" would contradict this same
+    page, which says "no check can, and none will be written for it"."""
+    text = interview.plan(repo)
+    block = text.split("WHAT WILL HAPPEN AT THE END")[1]
+
+    assert "yours to decide" in block
+    assert "you record the answer yourself" in block
+
+
+def test_the_ending_block_says_approving_ACCEPTS_the_unproved_ones(repo):
+    """The consent this document exists to obtain, and which no draft of the
+    plan has ever asked for."""
+    block = interview.plan(repo).split("WHAT WILL HAPPEN AT THE END")[1]
+
+    assert "Approving this plan accepts" in block
+    assert "will not be proved" in block
+
+
+def test_the_ending_block_makes_NO_claim_about_what_holds_the_handover(repo):
+    """**Counts only** (ruling 9 after review C2). Whether an unbound
+    criterion can hold a handover is a fact about `accept.py`, and board
+    ruling 1 says this layer renders engine facts rather than authoring prose
+    about them. `refusals.py` has no saying for a refusal that will NOT
+    happen, so the sentence waits for one rather than being invented here."""
+    block = interview.plan(repo).split("WHAT WILL HAPPEN AT THE END")[1]
+
+    lowered = block.lower()
+    assert "handover is being held" not in lowered
+    assert "will be held" not in lowered
+
+
+def test_no_ending_block_when_every_criterion_is_installed_bound(tmp_path):
+    """A plan predicting an ending that will not happen is noise. Watched
+    because a block that always renders would pass every test above."""
+    (tmp_path / "wringer.spec.yaml").write_text(
+        SPEC.replace("    human: true\n", "    human: false\n"), encoding="utf-8"
+    )
+    (tmp_path / ".wringer.yaml").write_text(
+        'version: 1\ngates:\n'
+        '  - id: g1\n    run: "true"\n    proves: csv-downloads\n'
+        '  - id: g2\n    run: "true"\n    proves: copy-reads-well\n',
+        encoding="utf-8",
+    )
+
+    assert "WHAT WILL HAPPEN AT THE END" not in interview.plan(tmp_path)
