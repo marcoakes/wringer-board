@@ -854,3 +854,153 @@ def test_no_ending_block_when_every_criterion_is_installed_bound(tmp_path):
     )
 
     assert "WHAT WILL HAPPEN AT THE END" not in interview.plan(tmp_path)
+
+
+# --- SPEC_PMPLAN_V0 P3: the way back ----------------------------------------
+
+
+def test_every_revision_withdraws_the_approval(repo):
+    """**The invariant this slice exists to build.** A person changing an
+    answer has withdrawn their approval of the plan that answer produced;
+    leaving `approved: true` standing would mean a build proceeding on a plan
+    nobody agreed to."""
+    interview.answer(repo, "which-columns", "The ones on screen.")
+    interview.approve(repo, read_the_plan=True)
+    assert "approved: true" in (repo / "wringer.spec.yaml").read_text()
+
+    interview.revise(repo, "which-columns", "Actually, every column.")
+
+    text = (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+    assert "approved: false" in text
+    assert "Actually, every column." in text
+    assert "The ones on screen." not in text
+
+
+def test_the_flip_is_unconditional_even_when_the_text_is_unchanged(repo):
+    """A person saying "change it to X" when it already says X is still asking
+    to reconsider. A conditional flip is a branch that can be wrong."""
+    interview.answer(repo, "which-columns", "Same answer.")
+    interview.approve(repo, read_the_plan=True)
+
+    interview.revise(repo, "which-columns", "Same answer.")
+
+    assert "approved: false" in (repo / "wringer.spec.yaml").read_text()
+
+
+def test_answers_refusal_to_overwrite_is_UNTOUCHED_by_revise_existing(repo):
+    """Two verbs, two consent meanings. `answer` is for a question nobody has
+    answered; `revise` is a person changing their mind. This window may not
+    quietly unify them."""
+    interview.answer(repo, "which-columns", "The ones on screen.")
+
+    with pytest.raises(interview.InterviewError, match="already answered"):
+        interview.answer(repo, "which-columns", "Something else.")
+
+
+def test_revising_a_MULTI_LINE_answer_leaves_no_orphaned_prose(repo):
+    """A `|-` block scalar spans several lines. Replacing only the `answer:`
+    line would leave the old prose orphaned inside the question's block, where
+    the next reader takes it for part of the new answer."""
+    import yaml
+
+    interview.answer(repo, "which-columns", "First line.\nSecond line.\nThird.")
+    assert "|-" in (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+
+    interview.revise(repo, "which-columns", "One line now.")
+
+    text = (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+    assert "Second line." not in text, text
+    loaded = yaml.safe_load(text)
+    answers = [q for q in loaded["open_questions"] if q["id"] == "which-columns"]
+    assert len(answers) == 1
+    assert answers[0]["answer"] == "One line now."
+
+
+def test_revise_writes_exactly_one_answer_key_and_the_engine_reads_it(repo):
+    """The duplicate-key malformation, guarded from the engine's side. PyYAML
+    happens to take the last of a duplicate pair, so a naive append can leave
+    the round-trip green while the document is malformed."""
+    spec = pytest.importorskip("wringer.spec")
+    interview.answer(repo, "which-columns", "First.")
+    interview.revise(repo, "which-columns", "Second.")
+
+    raw = (repo / "wringer.spec.yaml").read_text(encoding="utf-8")
+    assert raw.count("answer:") == 1, raw
+    loaded = spec.load(repo / "wringer.spec.yaml")
+    assert {q.id: q.answer for q in loaded.questions}["which-columns"] == "Second."
+
+
+def test_revising_an_ASSUMPTION_promotes_it_to_a_question_they_answered(repo):
+    """What stops the assumptions channel becoming a place to hide decisions.
+    It lands in `open_questions` because that is the channel `wring plan`
+    already reads into the briefs — an override recorded only in the sidecar
+    would be a person correcting a decision the builder never hears."""
+    spec = pytest.importorskip("wringer.spec")
+    (repo / "wringer.decisions.yaml").write_text(DECISIONS, encoding="utf-8")
+
+    interview.revise(repo, "memory-scope", "No — one browser is fine.")
+
+    loaded = spec.load(repo / "wringer.spec.yaml")
+    promoted = {q.id: q for q in loaded.questions}["memory-scope"]
+    assert promoted.question == "Should it follow a person to another device?"
+    assert promoted.answer == "No — one browser is fine."
+    assert loaded.approved is False
+
+
+def test_a_promoted_assumption_renders_as_superseded_not_as_a_live_decision(
+    repo,
+):
+    """The other half of C8: after promotion the plan must stop presenting the
+    decision as one that approving approves."""
+    (repo / "wringer.decisions.yaml").write_text(DECISIONS, encoding="utf-8")
+    interview.revise(repo, "memory-scope", "No — one browser is fine.")
+
+    text = interview.plan(repo)
+
+    assert "NO LONGER DECIDED FOR YOU" in text
+    assert "No — one browser is fine." in text
+
+
+def test_a_second_revise_of_a_promoted_assumption_edits_the_answer(repo):
+    """Dispatch follows the same join the plan does: an id that is now a
+    question takes the question path, so revising twice does not promote
+    twice."""
+    import yaml
+
+    (repo / "wringer.decisions.yaml").write_text(DECISIONS, encoding="utf-8")
+    interview.revise(repo, "memory-scope", "First thought.")
+    interview.revise(repo, "memory-scope", "Second thought.")
+
+    loaded = yaml.safe_load((repo / "wringer.spec.yaml").read_text(encoding="utf-8"))
+    matching = [q for q in loaded["open_questions"] if q["id"] == "memory-scope"]
+    assert len(matching) == 1, matching
+    assert matching[0]["answer"] == "Second thought."
+
+
+def test_promotion_works_when_the_spec_asked_NO_questions_at_all(tmp_path):
+    """`render()` emits `open_questions: []` in flow style on one line — no
+    sibling to measure an indent from, so this is a replacement rather than an
+    append, which is also what a person adding their first question by hand
+    would type."""
+    spec = pytest.importorskip("wringer.spec")
+    head, _, _ = SPEC.partition("open_questions:")
+    (tmp_path / "wringer.spec.yaml").write_text(
+        head + "open_questions: []\n", encoding="utf-8"
+    )
+    (tmp_path / "wringer.decisions.yaml").write_text(DECISIONS, encoding="utf-8")
+
+    interview.revise(tmp_path, "memory-scope", "One browser is fine.")
+
+    loaded = spec.load(tmp_path / "wringer.spec.yaml")
+    assert [q.id for q in loaded.questions] == ["memory-scope"]
+    assert loaded.questions[0].answer == "One browser is fine."
+
+
+def test_revise_refuses_an_id_it_does_not_know_and_names_what_it_does(repo):
+    with pytest.raises(interview.InterviewError, match="which-columns"):
+        interview.revise(repo, "not-a-thing", "x")
+
+
+def test_an_empty_revision_is_refused(repo):
+    with pytest.raises(interview.InterviewError, match="not an answer"):
+        interview.revise(repo, "which-columns", "   ")

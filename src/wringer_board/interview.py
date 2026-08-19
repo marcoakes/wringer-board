@@ -183,6 +183,59 @@ def answer(repo: Path, question_id: str, text: str) -> Path:
     return path
 
 
+def _replace_existing(
+    lines: list[str], question_id: str, text: str
+) -> list[str] | None:
+    """Replace a question's EXISTING answer in place, or None if it has none.
+
+    **The sibling `_fill_existing` cannot do this, and naming it as reusable
+    was the first draft's mistake.** That one fills an EMPTY `answer:` and
+    returns None the moment it finds a non-empty one — precisely and only the
+    case `revise` exists for.
+
+    Nor may `revise` fall through to `answer`'s append branch when this returns
+    None: appending a second `answer:` key produces the duplicate-key
+    malformation the comment above `answer` exists to prevent. The caller
+    refuses instead.
+
+    **It deletes the WHOLE existing scalar, continuation lines included.** A
+    person's multi-line answer is written as a `|-` block spanning several
+    lines; replacing only the `answer:` line would leave their old prose
+    orphaned in the middle of the document, still inside the question's block,
+    where the next reader would take it for part of the new answer.
+    """
+    target = re.compile(
+        r"^(\s*)-?\s*id:\s*['\"]?" + re.escape(question_id) + r"['\"]?\s*$"
+    )
+    inside = False
+    indent = ""
+    for index, line in enumerate(lines):
+        if not inside:
+            if target.match(line.rstrip("\n")) and _within_open_questions(lines, index):
+                inside = True
+                indent = _sibling_indent(line)
+            continue
+        if not line.strip().startswith("answer:") and _ends_block(line, indent):
+            return None                      # left the block without finding one
+        if line.strip().startswith("answer:"):
+            # Everything belonging to this scalar: the key line, plus every
+            # following line indented deeper than the key itself, which is
+            # exactly a block scalar's body.
+            end = index + 1
+            while end < len(lines):
+                nxt = lines[end]
+                if not nxt.strip():
+                    break
+                lead = len(nxt) - len(nxt.lstrip())
+                if lead <= len(indent):
+                    break
+                end += 1
+            copy = list(lines)
+            copy[index:end] = [f"{indent}answer: {_scalar(text, indent)}\n"]
+            return copy
+    return None
+
+
 def _fill_existing(
     lines: list[str], question_id: str, text: str
 ) -> list[str] | None:
@@ -505,6 +558,167 @@ def _ending_block(data: dict, bound: dict) -> list[str]:
         "",
     ]
     return lines
+
+
+MAX_OPEN_QUESTIONS = 20
+
+
+def _unapprove(lines: list[str]) -> list[str]:
+    """Set the interlock back to false. A line edit, and it always runs."""
+    for index, line in enumerate(lines):
+        match = APPROVED_LINE.match(line.rstrip("\n"))
+        if match is None:
+            continue
+        body = line.rstrip("\n")
+        start, end = match.span("value")
+        return lines[:index] + [f"{body[:start]}false{body[end:]}\n"] + lines[index + 1:]
+    raise InterviewError(
+        f"{SPEC_FILENAME} has no top-level `approved:` line to set back to "
+        "false. This surface edits what is there; it does not invent structure"
+    )
+
+
+def revise(repo: Path, target_id: str, text: str) -> Path:
+    """Change an answer, or overrule a decision that was taken for you.
+
+    **Every revision through this verb un-approves, unconditionally.** A person
+    changing an answer has withdrawn their approval of the plan that answer
+    produced; leaving `approved: true` standing would mean a build proceeding
+    on a plan nobody agreed to. It flips even when the file already says false
+    and even when the new text equals the old — a conditional flip is a branch
+    that can be wrong, and an unconditional one cannot.
+
+    **Both edits are computed in memory and written ONCE.** There is therefore
+    no moment on disk at which the file says `approved: true` beside words
+    nobody approved, and a failed write changes nothing.
+
+    `answer`'s refusal to overwrite STAYS, and this is deliberately a separate
+    verb rather than a flag on it: `answer` is for a question nobody has
+    answered, `revise` is a person changing their mind, and the second says so
+    by withdrawing the approval. Two verbs, two consent meanings.
+    """
+    if not text.strip():
+        raise InterviewError(
+            "an empty answer is not an answer. A question is answered when "
+            "somebody writes something under it; leaving it blank is the state "
+            "it is already in"
+        )
+
+    path = _spec_path(repo)
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    known = {q.id: q for q in questions(repo)}
+
+    if target_id in known:
+        updated = _replace_existing(lines, target_id, text)
+        if updated is None:
+            # Never fall through to the append branch: a second `answer:` key
+            # is the duplicate-key malformation, and this verb exists to change
+            # an answer rather than to add one.
+            raise InterviewError(
+                f"could not find exactly one `answer:` line for {target_id!r} "
+                f"in {SPEC_FILENAME}. Nothing was changed — edit it by hand"
+            )
+        path.write_text("".join(_unapprove(updated)), encoding="utf-8")
+        return path
+
+    assumptions, _ = _decisions(repo)
+    found = next(
+        (a for a in assumptions if str(a.get("id", "")) == target_id), None
+    )
+    if found is None:
+        names = ", ".join(sorted([*known, *(str(a.get("id", "")) for a in assumptions)]))
+        raise InterviewError(
+            f"no open question or assumption {target_id!r} in this repository. "
+            f"Known: {names or 'none'}"
+        )
+    return _promote(repo, path, lines, found, text)
+
+
+def _promote(
+    repo: Path, path: Path, lines: list[str], assumption: dict, text: str
+) -> Path:
+    """Turn a decision taken FOR someone into a question they answered.
+
+    It lands in `open_questions` and nowhere else, because that is the channel
+    `wring plan` already reads into the briefs. An override recorded only in
+    the sidecar would be a person correcting a decision that the builder never
+    hears — strictly worse than the hole it was meant to close.
+
+    The sidecar is NOT edited: the plan renders an assumption whose question
+    has since been answered as superseded. Deleting the row here would make a
+    board verb write `wringer.decisions.yaml`, and this surface writes
+    `wringer.spec.yaml` and nothing else.
+    """
+    identifier = str(assumption.get("id", ""))
+    question = str(assumption.get("instead_of_asking", "")).strip()
+    if not question:
+        raise InterviewError(
+            f"assumption {identifier!r} records no question it replaced, so "
+            "there is nothing to promote it into. Nothing was changed"
+        )
+    if len(questions(repo)) >= MAX_OPEN_QUESTIONS:
+        raise InterviewError(
+            f"{SPEC_FILENAME} already has {MAX_OPEN_QUESTIONS} open questions, "
+            "which is the engine's limit — promoting another would write a "
+            "spec its own loader refuses. Nothing was changed"
+        )
+
+    block = [
+        f"  - id: {identifier}\n",
+        f"    question: {_engine_scalar(question)}\n",
+        "    required: true\n",
+        f"    answer: {_scalar(text, '    ')}\n",
+    ]
+
+    out: list[str] | None = None
+    for index, line in enumerate(lines):
+        stripped = line.rstrip("\n")
+        if stripped.strip() in ("open_questions: []", "open_questions:[]"):
+            # A draft that asked nothing renders the key in FLOW style on one
+            # line. There is no sibling to measure an indent from, so this is a
+            # replacement rather than an append — which is also exactly what a
+            # person adding their first question by hand would type.
+            out = lines[:index] + ["open_questions:\n", *block] + lines[index + 1:]
+            break
+        if stripped.rstrip() == "open_questions:":
+            end = index + 1
+            while end < len(lines) and (
+                not lines[end].strip() or lines[end].startswith((" ", "\t", "-"))
+            ):
+                if lines[end].strip() and not lines[end].startswith((" ", "\t")):
+                    break
+                end += 1
+            while end > index + 1 and not lines[end - 1].strip():
+                end -= 1
+            out = lines[:end] + block + lines[end:]
+            break
+    if out is None:
+        raise InterviewError(
+            f"{SPEC_FILENAME} has no top-level `open_questions:` key, so there "
+            "is nowhere to record your answer. This surface edits what is "
+            "there; it does not invent structure"
+        )
+    path.write_text("".join(_unapprove(out)), encoding="utf-8")
+    return path
+
+
+def _engine_scalar(text: str) -> str:
+    """The ENGINE's scalar rule, for a line the engine also writes.
+
+    `spec._scalar` and this module's `_scalar` are different functions with
+    different quoting rules, and `question:` is a line `wring spec`'s renderer
+    emits too. Writing it with the board's rule would let an apostrophe, a
+    colon or a `#` produce bytes `render()` would never have written — which
+    breaks byte-equality against the one file that is the artifact of record.
+
+    Falls back to this module's rule only when the engine is not importable,
+    which is the board's normal standalone state.
+    """
+    try:
+        from wringer import spec as engine_spec
+    except ImportError:
+        return _scalar(text, "    ")
+    return engine_spec._scalar(text)
 
 
 CONFIG_FILENAME = ".wringer.yaml"

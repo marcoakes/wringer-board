@@ -66,6 +66,16 @@ def main(argv: list[str] | None = None) -> int:
     answered.add_argument("--id", required=True, help="the question's id")
     answered.add_argument("--text", required=True, help="the answer")
 
+    revised = sub.add_parser(
+        "revise",
+        help="change an answer, or overrule a decision taken for you. Every "
+             "revision withdraws your approval, so you see the plan again",
+    )
+    revised.add_argument("repo", nargs="?", default=".")
+    revised.add_argument("--id", required=True,
+                         help="the question's id, or an assumption's")
+    revised.add_argument("--text", required=True, help="what you want instead")
+
     approved = sub.add_parser(
         "approve",
         help="write `approved: true` after printing the plan. Approving and "
@@ -75,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.command in ("plan", "answer", "approve"):
+    if args.command in ("plan", "answer", "revise", "approve"):
         return _interview(args)
 
     repo = Path(args.repo).resolve()
@@ -111,6 +121,13 @@ def _interview(args) -> int:
     try:
         if args.command == "plan":
             print(interview.plan(repo), end="")
+            return 0
+        if args.command == "revise":
+            path = interview.revise(repo, args.id, args.text)
+            print(
+                f"{path.name}: updated, and your approval was withdrawn — "
+                "read the plan again before approving it.",
+            )
             return 0
         if args.command == "answer":
             path = interview.answer(repo, args.id, args.text)
