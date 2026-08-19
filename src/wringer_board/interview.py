@@ -420,8 +420,24 @@ def _bindings(repo: Path) -> dict[str, tuple[str, bool]]:
 # tells a person what the flag does, and a surface that silently deleted it
 # while flipping the flag would be removing the explanation of the thing it
 # just did.
+# **Every YAML 1.1 boolean the ENGINE accepts, and the engine is what decides.**
+# `false`, `no` and `off` all read as the boolean false in PyYAML, and
+# `spec.load` on `approved: no` returns a perfectly valid unapproved spec. The
+# pattern matched only `true|false`, so `approve` fell out of its loop on the
+# others and told the person their file *"has no top-level `approved:` line to
+# set"* — about a line sitting in front of them.
+#
+# That is the SECOND time this exact sentence has been wrong, for the same
+# underlying reason, and the note below records the first. Both times the
+# fixtures were written on the same side of the seam as the reader.
+#
+# `y`/`n` are deliberately absent: PyYAML reads them as the strings "y"/"n",
+# so the engine refuses such a spec first with "'approved' must be a boolean".
+# This surface must accept exactly what the engine does — no more, since a
+# spelling the engine rejects is not an interlock at all, and no less.
+_YAML_TRUE = frozenset({"true", "yes", "on"})
 APPROVED_LINE = re.compile(
-    r"^approved:\s*(?P<value>true|false)\s*(?P<comment>#.*)?$", re.I
+    r"^approved:\s*(?P<value>true|false|yes|no|on|off)\s*(?P<comment>#.*)?$", re.I
 )
 
 
@@ -458,7 +474,7 @@ def approve(repo: Path, *, read_the_plan: bool) -> Path:
         match = APPROVED_LINE.match(line.rstrip("\n"))
         if match is None:
             continue
-        if match.group("value").lower() == "true":
+        if match.group("value").lower() in _YAML_TRUE:
             raise InterviewError(
                 f"{SPEC_FILENAME} is already approved. Nothing was changed",
                 exit_code=0,

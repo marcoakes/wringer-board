@@ -259,6 +259,67 @@ def test_approve_preserves_the_operators_own_capitalisation_and_comment(repo):
     assert line == "approved:   true   # mine, and I capitalise", line
 
 
+@pytest.mark.parametrize("spelling", ["no", "No", "NO", "off", "Off"])
+def test_approve_handles_every_yaml_false_the_ENGINE_accepts(repo, spelling):
+    """**The other half of the 2026-08-19 interlock defect.**
+
+    YAML 1.1 spells false `false`, `no` and `off`, in any case, and PyYAML
+    reads all of them as the boolean. The ENGINE'S OWN LOADER accepts every
+    one: `spec.load` on a file saying `approved: no` returns `approved=False`,
+    a completely valid unapproved spec.
+
+    `APPROVED_LINE` matched only `true|false`, so `approve` fell through the
+    loop and raised *"has no top-level `approved:` line to set. This surface
+    edits what is there; it does not invent structure"* — telling a person
+    their file lacks a line that is sitting right there, and reading as a
+    caller bug when it is not.
+
+    That sentence has now been wrong twice for the same reason. The comment
+    above `APPROVED_LINE` records the first time, when the pattern ended
+    `\\s*$` and so refused every spec the engine itself drafts. Both were
+    missed because this package's fixtures are written on the same side of the
+    seam as its reader.
+
+    `y`/`n` are deliberately NOT accepted: PyYAML reads those as the strings
+    "y"/"n", so the engine refuses such a spec first with "'approved' must be
+    a boolean". A spelling this surface accepts must be one the engine does.
+    """
+    import yaml
+
+    path = repo / "wringer.spec.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "approved: false", f"approved: {spelling}", 1
+        ),
+        encoding="utf-8",
+    )
+    interview.answer(repo, "which-columns", "The ones on screen.")
+
+    interview.approve(repo, read_the_plan=True)
+
+    after = path.read_text(encoding="utf-8")
+    assert yaml.safe_load(after)["approved"] is True, after
+    assert f"approved: {spelling}" not in after
+
+
+@pytest.mark.parametrize("spelling", ["true", "True", "yes", "Yes", "on", "On"])
+def test_an_already_approved_spec_is_recognised_in_every_yaml_true(repo, spelling):
+    """The mirror, and the direction that would be dangerous to get wrong: a
+    spec already approved as `yes` must be seen as approved, not re-approved
+    and not reported as structureless."""
+    path = repo / "wringer.spec.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "approved: false", f"approved: {spelling}", 1
+        ),
+        encoding="utf-8",
+    )
+    interview.answer(repo, "which-columns", "x")
+
+    with pytest.raises(interview.InterviewError, match="already approved"):
+        interview.approve(repo, read_the_plan=True)
+
+
 def test_there_is_no_way_to_approve_without_the_plan_being_rendered(repo):
     """**Ruling 20's forbidden button.** A button that approves without showing
     the plan is not the act the approval step exists for."""
