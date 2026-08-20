@@ -179,10 +179,27 @@ def _card_html(card: Card) -> str:
         # a single requirement, and a check proves only the requirement it is
         # bound to. The page was leaving the reader to derive that, and every
         # one of them derived the opposite.
+        now_passes = (
+            # **Say that it passes NOW.** Every reader on both cold runs hit
+            # this: the only evidence on the page was a failing log. "I am
+            # told it passes and shown it failing." The board KNEW it passes —
+            # that is what DONE means — and never said so beside the red.
+            '<p class="nowpasses">Those failures are the point: this is the '
+            "recorded run from <b>before</b> the work, kept so that a tick "
+            "means <b>this did not work before and works now</b> rather than "
+            "&ldquo;nobody noticed a problem&rdquo;. The same check "
+            "<b>passes today</b> — that is what marks this requirement done."
+            "</p>"
+            if card.state == DONE
+            else ""
+        )
         parts.append(
             '<div class="said"><span class="who">What the check for '
-            f"<b>this</b> requirement printed</span>{_esc(card.check_said)}"
-            "<p class=\"scope\">These lines are what this one requirement's "
+            "<b>this</b> requirement printed"
+            + (" <b>BEFORE the work</b>" if card.state == DONE else "")
+            + f"</span>{_esc(card.check_said)}"
+            + now_passes
+            + '<p class="scope">These lines are what this one requirement\'s '
             "check said. It may test more than this requirement does — but it "
             "only <b>proves</b> this one, so a requirement below saying "
             "nothing checks it is not contradicted by anything here.</p></div>"
