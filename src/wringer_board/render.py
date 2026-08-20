@@ -164,9 +164,28 @@ def _card_html(card: Card) -> str:
             f"{_esc(card.receipt or '')}</div>"
         )
     if card.check_said:
+        # **Say WHOSE check this is, or the page reads as a contradiction.**
+        #
+        # Six cold readers on 2026-08-19 hit the same wall: this block prints
+        # a check's output, and that output names assertions whose wording
+        # matches OTHER requirement cards almost exactly — cards which say
+        # "Nothing checks this yet". The product manager reader:
+        #
+        #   "Those two statements cannot both be true. That is the difference
+        #    between 'we verified 1 of 10' and 'we verified 9 of 10', and I
+        #    can't tell which from the page."
+        #
+        # Both ARE true. One check can assert many things while being bound to
+        # a single requirement, and a check proves only the requirement it is
+        # bound to. The page was leaving the reader to derive that, and every
+        # one of them derived the opposite.
         parts.append(
-            '<div class="said"><span class="who">What the check itself '
-            f"printed</span>{_esc(card.check_said)}</div>"
+            '<div class="said"><span class="who">What the check for '
+            f"<b>this</b> requirement printed</span>{_esc(card.check_said)}"
+            "<p class=\"scope\">These lines are what this one requirement's "
+            "check said. It may test more than this requirement does — but it "
+            "only <b>proves</b> this one, so a requirement below saying "
+            "nothing checks it is not contradicted by anything here.</p></div>"
         )
     if card.question:
         # **The unblocking question, rendered — H-4.** Ruling 16 has given
@@ -182,24 +201,66 @@ def _card_html(card: Card) -> str:
     return "\n".join(parts)
 
 
+
+def _intent_html(text: str) -> str:
+    """The PRD, as something a person can read.
+
+    Not a markdown implementation and not trying to be: it strips the two
+    marks that actually leaked onto the page — leading `#` heading hashes and
+    `*emphasis*` — and keeps paragraph breaks. Everything is escaped FIRST, so
+    this can never turn a requirements document into markup.
+    """
+    import re
+
+    out = []
+    for para in _esc(text).split("\n\n"):
+        lines = []
+        for line in para.splitlines():
+            line = re.sub(r"^\s*#{1,6}\s*", "", line)
+            line = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"<em>\1</em>", line)
+            lines.append(line.strip())
+        joined = " ".join(l for l in lines if l)
+        if joined:
+            out.append(f"<p>{joined}</p>")
+    return "".join(out)
+
+
 def render(board: Board) -> str:
     """The whole page, as one self-contained string."""
     cards = [card_for(board, criterion) for criterion in board.criteria]
     title = board.spec_title or "Requirements"
 
     body: list[str] = [f"<h1>{_esc(title)}</h1>"]
-    if board.spec_intent:
-        body.append(f'<p class="intent">{_esc(board.spec_intent)}</p>')
 
+    # **THE VERDICT FIRST, and the requirements document LAST.**
+    #
+    # Six readers were handed this page cold on 2026-08-19 and none could say
+    # whether the work was done (`docs/coldread/`). The page opened with the
+    # PRD — sixteen lines of the reader's own input — before it said anything
+    # about the state of the work. A reader arrives with one question and was
+    # answered with the document they had already written.
+    #
+    # So the intent moves below the cards, and the first thing on the page is
+    # the answer.
     if board.refusal:
         body.append(f'<div class="refusal"><p>{_esc(board.refusal)}</p></div>')
         return _page(title, body)
 
     # **The promise, earned or withheld** — never softened into a maybe.
+    done_count = sum(1 for c in cards if c.state == DONE)
     if promise_earned(board, cards):
+        # **SCOPED to the rows it covers.** It read "Every requirement marked
+        # done on this page was demonstrated able to FAIL before it was made
+        # to pass" — in a green box, above ten cards, of which it was true of
+        # one. Every cold reader on 2026-08-19 took it as a guarantee about
+        # the page. It is a guarantee about a subset, so it now says which.
         body.append(
-            '<div class="promise">Every requirement marked done on this page '
-            "was demonstrated able to FAIL before it was made to pass.</div>"
+            '<div class="promise">'
+            f'{"The one requirement" if done_count == 1 else f"All {done_count} requirements"}'
+            f' marked done below {"was" if done_count == 1 else "were"} '
+            "demonstrated able to FAIL before being made to pass. "
+            "<strong>This says nothing about the rest of the page.</strong>"
+            "</div>"
         )
     else:
         body.append(
@@ -211,11 +272,19 @@ def render(board: Board) -> str:
 
     done = sum(1 for c in cards if c.state == DONE)
     refused = sum(1 for c in cards if c.refused)
-    body.append(
-        f'<p class="counts">{len(cards)} requirement'
-        f'{"" if len(cards) == 1 else "s"} · {done} done and proved · '
-        f'{refused} holding up the handover</p>'
-    )
+    # **Every requirement is accounted for, not just the interesting ones.**
+    # The old line read "1 requirement · 1 done and proved · 1 holding up the
+    # handover" over TEN criteria, and a reader who read only that line —
+    # which is what a count line is for — concluded eight of ten were fine.
+    # The remainder is the largest group on most pages and it was the one
+    # group the summary omitted.
+    rest = len(cards) - done - refused
+    parts = [f'{done} of {len(cards)} proved']
+    if refused:
+        parts.append(f'{refused} still needs you')
+    if rest > 0:
+        parts.append(f'{rest} will not be proved — nothing checks {"it" if rest == 1 else "them"}')
+    body.append(f'<p class="counts">{" · ".join(parts)}</p>')
 
     # **Between the counts and the cards, and that placement is the point.**
     # These are facts about the ROUND — how the work stopped, whether the
@@ -251,6 +320,20 @@ def render(board: Board) -> str:
             "<p class=\"spend\">What this run recorded using — "
             f"{_esc(counted)}. These are the counts the model and the worker "
             "reported; Wringer does not price them.</p>"
+        )
+
+    # **The requirements document, LAST and collapsed.** It is the input, not
+    # the answer, and it was the first thing on the page. Its markdown was
+    # never rendered either, so a reader met a literal `# ` and literal
+    # asterisks on a page written for someone who does not know what those
+    # are — the six cold readers all noticed and one called it "a leftover
+    # formatting character".
+    if board.spec_intent:
+        body.append(
+            '<details class="intent-block"><summary>What was asked for, in '
+            "the words it was asked in</summary>"
+            f'<div class="intent">{_intent_html(board.spec_intent)}</div>'
+            "</details>"
         )
 
     technical = [

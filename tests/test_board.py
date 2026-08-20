@@ -317,7 +317,14 @@ def test_an_UNBOUND_criterion_says_nothing_checks_it_yet(repo):
     board = board_of(repo)
     card = cards.card_for(board, board.criteria[0])
     assert card.cause == "unbound"
-    assert "Nothing checks this yet" in card.sentence
+    # Pinned on the PROPERTY, not the sentence. The old wording — "Nothing
+    # checks this yet" — was reworded on 2026-08-20 because six cold readers
+    # met it beside a printed check whose assertions matched these very
+    # requirements, and concluded the page was lying to them. What must stay
+    # true is that an unbound criterion says NO CHECK IS BOUND TO IT and does
+    # not claim more.
+    assert "bound to this requirement" in card.sentence
+    assert "prove it either way" in card.sentence
 
 
 def test_an_UNMAPPED_reason_renders_the_engines_words_VERBATIM(repo):

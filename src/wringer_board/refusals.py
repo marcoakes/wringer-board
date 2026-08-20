@@ -134,8 +134,17 @@ MAPPING: dict[tuple[str, str], Saying] = {
     # `accept.py` at `d23d7ca`; the witness lane added the second row below and
     # S1's real-bundle tests found it on real data rather than by reading.
     (UNEVIDENCED_CAUSE, "unbound"): Saying(
-        "Nothing checks this yet, so nobody can prove it either way.",
-        "Which check should decide this requirement?",
+        "No check is bound to this requirement, so nobody can prove it either "
+        "way. A check elsewhere on this page may happen to test something "
+        "similar; it does not count for this one.",
+        # The old question here was "Which check should decide this
+        # requirement?" — asked of a reader who has no list of checks, does
+        # not know what one is, and has nowhere to write an answer. All six
+        # cold readers on 2026-08-19 named it, and it was the most-repeated
+        # question on the page. A question a reader cannot act on is not a
+        # question; it is a demand disguised as one.
+        "Nothing is needed from you — an engineer has to bind a check to this "
+        "before it can be proved.",
     ),
     (UNEVIDENCED_CAUSE, "witness-evidenced-nothing"): Saying(
         "Nothing in this repository checks this requirement, so Wringer wrote "
@@ -171,7 +180,19 @@ MAPPING: dict[tuple[str, str], Saying] = {
     (UNEVIDENCED_CAUSE, "human-unanswered"): Saying(
         "No check can decide this one — it needs a person to look and say. "
         "Nobody has yet.",
-        "Is this requirement met? Only you can answer it.",
+        # **It must say WHERE the answer goes.** The 2026-08-20 cold read: "it
+        # is blocked on me personally and I have not been given any way to
+        # unblock it — there is no button, no reply box, no email address, no
+        # instruction for how I answer the question it is asking. A page that
+        # stops on my answer should tell me where to put my answer."
+        #
+        # The mechanism exists and the page was simply not naming it. It is a
+        # file a PERSON writes, deliberately — nothing in either repository
+        # writes a judgement, because a surface that could answer a `human`
+        # criterion would be the thing this project exists to answer.
+        "Is this requirement met? Only you can answer it — write your answer "
+        "into `wringer.judgements.yaml` in the project. Nothing else can put "
+        "it there, and until it is there the handover waits.",
     ),
     (UNEVIDENCED_CAUSE, "human-said-no"): Saying(
         "A person looked at this and said it is not met. Nothing here can "
