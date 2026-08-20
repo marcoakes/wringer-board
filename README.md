@@ -1,3 +1,26 @@
+> # ⚠️ THIS CODE HAS MOVED — DO NOT EDIT IT HERE
+>
+> **`wringer_board` now ships inside the `wringer` package**, as of
+> 2026-08-20. The canonical source is
+> [`marcoakes/wringer`](https://github.com/marcoakes/wringer) at
+> `src/wringer_board/`, and it is installed with `pip install wringer`.
+>
+> **The copy in this repository is already out of date** — the merged copy has
+> been formatted and lint-fixed and this one has not. An edit made here
+> reaches nobody and will be lost.
+>
+> Why it moved: four packages with two of them unpublished read as sprawl, and
+> it was not only cosmetic — `pip install wringer-drive` was unresolvable for
+> months because it declared a dependency on `wringer-board`, which had never
+> been published.
+>
+> The architectural seam did NOT move with it. The board is still a separate
+> layer that consumes bundles and the CLI as its API, and that is now enforced
+> by `tests/test_layer_seam.py` in the engine repository rather than by a
+> package boundary.
+>
+> This repository stays up for its history and its cold-read evidence.
+
 # wringer-board
 
 **One page that tells you what is actually done — and shows you the proof.**
